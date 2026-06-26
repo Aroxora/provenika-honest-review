@@ -131,15 +131,16 @@ The private codebase is under active remediation. As of this review:
 - ✅ **Structure fetch now handles mmCIF** — many modern/large PDB entries have no legacy `.pdb` file, so the
   docking-box stage used to silently 404 on them; it now falls back to `.cif` and parses the mmCIF atom loop.
   *(Tested, committed.)*
-- ✅ **The validation harness has been RUN — and the pipeline now PASSES redocking** (`cad/validate.py`,
-  against AutoDock Vina 1.2.7). The honest path there is the point: running it first exposed a harness bug (it
-  errored on *every* RMSD — fixed via `obrms`), then exposed that the crude Open Babel prep failed the science
-  (erlotinib redocked at 7.9 Å). Upgrading to **docking-grade prep — Meeko (ligand) + pdb2pqr (receptor
-  protonation)** + a focused box — gives the reproducible result **1M17 1.21 Å and 3POZ 1.13 Å, both correct
-  (≤2 Å), 2/2 evaluable, mean 1.17 Å** (imatinib docks but won't RMSD-match). So with proper prep the pipeline
-  **reproduces known binding modes.** `dock.py` uses these tools when present, falling back to Open Babel.
-  Caveats stay: a 3-complex starter set, pose reproduction ≠ prospective ≠ clinical. Evidence: the private
-  repo's `examples/validation-redock/`.
+- ✅ **The docking has been validated at benchmark scale** (`cad/validate.py` against AutoDock Vina 1.2.7).
+  The honest path there is the point: running it first exposed a harness bug (it errored on *every* RMSD —
+  fixed via `obrms`), then exposed that crude Open Babel prep failed the science (erlotinib redocked at 7.9 Å);
+  upgrading to **docking-grade prep — Meeko (ligand) + pdb2pqr (receptor protonation)** fixed it. The
+  **benchmark-scale result on a 39-complex oncology set (parallel, local): 27 evaluable, 17 correct (≤2 Å) =
+  63% success, median 1.39 Å** — squarely in the published AutoDock Vina range (~50–70%). So the docking
+  **reproduces known binding modes at a credible rate.** (12 self-filtered: 11 `obrms` couldn't match large
+  flexible ligands like imatinib; 1 had no drug-like ligand.) `dock.py` uses Meeko/pdb2pqr when present,
+  falling back to Open Babel. Caveats stay: a 39-complex set is not the full Astex/PDBbind, and pose
+  reproduction ≠ prospective ≠ clinical. Evidence + runner: the private repo's `examples/validation-redock/`.
 - ✅ **Structure selection is now coverage-aware** — `pick_best_pdb` prefers structures that span a
   substantial fraction of the protein over tiny high-resolution domain fragments, reads the **AlphaFold pLDDT**
   confidence it used to ignore, and flags that only fragment F1 is fetched + that apo/holo and mutations are
@@ -195,10 +196,11 @@ clinical tool**.
 
 Two questions worth answering plainly, because they are easy to conflate:
 
-- **"Is it validated?"** Validation is *measured evidence*, not a badge — so we **ran it** (redocking against
-  AutoDock Vina), fixed the prep when it failed, and **it now passes**: **1M17 1.21 Å and 3POZ 1.13 Å, both
-  correct (≤2 Å), 2/2 evaluable, mean 1.17 Å** with docking-grade prep (Meeko + pdb2pqr). So the docking
-  **reproduces known binding modes** — *measured*, on a small benchmark. That earns cautious trust in *triage*;
+- **"Is it validated?"** Validation is *measured evidence*, not a badge — so we **ran it at benchmark scale**
+  (39-complex oncology redocking set against AutoDock Vina, with Meeko + pdb2pqr prep): **17 of 27 evaluable
+  complexes redock correctly (≤2 Å) = 63% success, median 1.39 Å** — in the published AutoDock Vina range. So
+  the docking **reproduces known binding modes at a credible rate** — *measured*, on a 39-complex set (not the
+  full Astex/PDBbind). That earns cautious trust in *triage*;
   it is still **not** prospective accuracy, **not** an affinity/enrichment validation, and **never** clinical.
 - **"Can it be used clinically?"** **No, and it should not be.** Software that informs diagnosis, prognosis,
   or treatment is a regulated medical device (FDA SaMD / EU MDR) requiring clinical-validation studies, a
