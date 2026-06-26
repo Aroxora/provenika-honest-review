@@ -131,11 +131,13 @@ The private codebase is under active remediation. As of this review:
 - ✅ **Structure fetch now handles mmCIF** — many modern/large PDB entries have no legacy `.pdb` file, so the
   docking-box stage used to silently 404 on them; it now falls back to `.cif` and parses the mmCIF atom loop.
   *(Tested, committed.)*
-- ✅ **A validation *harness* now exists** (`cad/validate.py`) — redocking pose-RMSD (≤2 Å = correct) plus
-  retrospective enrichment (ROC AUC / EF), so the pipeline's accuracy can be **measured**, not asserted. The
-  metric math is offline-tested in CI. **Important honesty caveat:** a harness is not a result — the pipeline
-  remains **unvalidated** until those benchmarks are actually run (the docking step needs Vina/Open Babel).
-  Building the measurement is the honest first step toward "validated," nothing more.
+- ✅ **The validation harness has now been RUN** (`cad/validate.py`, against AutoDock Vina 1.2.7 + Open Babel
+  3.1.1). Running it first exposed that the harness *couldn't compute RMSD at all* (every complex errored) — a
+  real bug, since fixed (it now uses `obrms`). The measured result on the 3-complex starter benchmark:
+  **3POZ 1.15 Å (correct), 1M17 7.86 Å (not reproduced), imatinib prep-failed — 1/2 evaluable correct, mean
+  4.5 Å.** So the pipeline reproduces *some* crystal poses but not reliably; the crude prep (no proper receptor
+  protonation, Open Babel ligand PDBQT) is the cause. **Measured, not unrun — and the measurement says it is
+  not yet validated for pose accuracy.** Evidence: the private repo's `examples/validation-redock/`.
 - ✅ **Structure selection is now coverage-aware** — `pick_best_pdb` prefers structures that span a
   substantial fraction of the protein over tiny high-resolution domain fragments, reads the **AlphaFold pLDDT**
   confidence it used to ignore, and flags that only fragment F1 is fetched + that apo/holo and mutations are
@@ -191,10 +193,11 @@ clinical tool**.
 
 Two questions worth answering plainly, because they are easy to conflate:
 
-- **"Is it validated?"** Validation is *measured evidence*, not a badge. The new harness lets you produce
-  that evidence (redocking RMSD, enrichment); until those benchmarks are run and reported, the honest answer
-  stays **no — it is unvalidated**. Reproducing known answers would earn cautious trust in *triage*, never
-  proof of a prospective or clinical result.
+- **"Is it validated?"** Validation is *measured evidence*, not a badge — so we **ran it** (redocking against
+  AutoDock Vina). The honest result: **1 of 2 evaluable complexes redocked correctly (3POZ 1.15 Å), the other
+  did not (1M17 7.86 Å), one ligand wouldn't prep — mean 4.5 Å.** So it is now *measured*, and the measurement
+  says **not validated for pose accuracy** (the crude prep is the cause). A good redocking RMSD would earn
+  cautious trust in *triage* anyway — never proof of a prospective or clinical result.
 - **"Can it be used clinically?"** **No, and it should not be.** Software that informs diagnosis, prognosis,
   or treatment is a regulated medical device (FDA SaMD / EU MDR) requiring clinical-validation studies, a
   quality system, and clearance — not a code change. This tool stays a research/triage aid; a CI medical-
