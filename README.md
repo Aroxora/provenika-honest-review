@@ -131,9 +131,17 @@ The private codebase is under active remediation. As of this review:
   metric math is offline-tested in CI. **Important honesty caveat:** a harness is not a result — the pipeline
   remains **unvalidated** until those benchmarks are actually run (the docking step needs Vina/Open Babel).
   Building the measurement is the honest first step toward "validated," nothing more.
-- ⏳ **Open:** the remaining items above — see [`KNOWN-LIMITATIONS.md`](KNOWN-LIMITATIONS.md) for the
-  prioritized queue (`.cif`-only structure fetch, holo/coverage-aware structure selection, feasibility-verdict
-  labeling, verifier-scope honesty, `clean`/Veber fidelity, and the doc reconciliation).
+- ✅ **Structure selection is now coverage-aware** — `pick_best_pdb` prefers structures that span a
+  substantial fraction of the protein over tiny high-resolution domain fragments, reads the **AlphaFold pLDDT**
+  confidence it used to ignore, and flags that only fragment F1 is fetched + that apo/holo and mutations are
+  unchecked. *(Tested.)*
+- ✅ **The cost-benefit readout no longer overclaims** — it now states P(approval) is a phase×modality
+  benchmark identical for every program (no target signal), relabels gross profit (was "revenue"), flags the
+  undiscounted/asymmetric ratio and the unsourced verdict bands, and corrects the BIO/Wong/DiMasi attribution.
+  *(Labels/attribution only — the JSON is unchanged; the field-name rename is deferred.)*
+- ⏳ **Open:** see [`KNOWN-LIMITATIONS.md`](KNOWN-LIMITATIONS.md) for the prioritized queue still remaining
+  (cross-stage target-resolution mismatch, "potent activities" relabel, "docking feasible" qualifier,
+  verifier-scope honesty, `clean`/Veber fidelity + committed-data refresh, and the doc reconciliation).
 
 ## On "validation" and "clinical use"
 

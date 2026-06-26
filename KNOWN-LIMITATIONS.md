@@ -51,14 +51,15 @@ This is the category the project most needs to confront: numbers that are *compu
   cross-references indiscriminately — apo, NMR, fragment, mutant, partial-domain — so it indicates only that
   *some* structure exists, not that a dockable pocket structure is available. *(`cad/target_report.py:93,99,174`;
   `cad/run_pipeline.py:175`.)*
-- ⏳ 🟠 **"Best" PDB optimizes resolution only — ignores coverage, domain, apo/holo, mutation.** Can return a
-  high-resolution structure of the wrong domain, an apo form, or a point mutant (e.g. EGFR T790M) with no flag;
-  on an apo pick the pipeline silently skips box generation rather than seeking a holo structure.
-  *(`cad/fetch_structure.py:65-72,98-105,135-145`.)*
-- ⏳ 🟠 **AlphaFold fallback never reads pLDDT and only fetches fragment F1.** A low-confidence or truncated
-  predicted model is handed off identically to a good one; the "validate pLDDT before docking" string is
-  advice, not an enforced gate, and proteins >~2700 residues lose everything past F1.
-  *(`cad/fetch_structure.py:83-84,88,158-171`.)*
+- ◐ 🟠 **"Best" PDB optimized resolution only — ignored coverage, domain, apo/holo, mutation.** Could return a
+  high-resolution structure of the wrong domain, an apo form, or a point mutant with no flag.
+  *(`cad/fetch_structure.py`.)* **Partly fixed:** `pick_best_pdb` is now **coverage-aware** (prefers
+  structures spanning ≥50% of the protein over domain fragments) and reports coverage + a caveat. **Still
+  open:** apo/holo and mutation status are not checked (now stated explicitly rather than silently).
+- ✅ 🟠 **AlphaFold fallback never read pLDDT and only fetched fragment F1.** A low-confidence or truncated
+  predicted model was handed off identically to a good one. *(`cad/fetch_structure.py`.)* **Fixed:** the
+  AlphaFold path now reads mean/percent-confident **pLDDT** (B-factor column) and states only fragment F1 is
+  fetched (large proteins truncated), instead of a static advisory string.
 - ✅ 🟠 **Blind-box docking used `--autobox`, which stock AutoDock Vina does not support.** The no-center branch
   passed a flag that exists only in smina/gnina (and even there it is `--autobox_ligand`), so the documented
   blind-docking path errored out instead of running. *(`cad/dock.py:160-163`.)* **Fixed:** the blind path now
@@ -72,6 +73,13 @@ This is the category the project most needs to confront: numbers that are *compu
 The clinical-phase approval priors and per-phase costs are correctly transcribed from BIO/Informa and DiMasi —
 that part is real. The problem is everything around them, presented under one "sources" line that blends
 sourced and invented numbers.
+
+> ◐ **Partly fixed.** The human-facing readout and docstring now state these honestly: P(approval) is flagged
+> as a phase×modality benchmark identical for every program; "Risk-adjusted revenue" is relabelled **gross
+> profit**; the BCR is flagged undiscounted + asymmetric; the verdict bands are flagged unsourced; and the
+> BIO (preclinical estimate) / Wong (success rates, not costs) / DiMasi (costs) attribution is corrected.
+> **Still open:** renaming the `risk_adjusted_revenue_musd` JSON key (deferred — needs regenerating the
+> committed example).
 
 - ⏳ 🟠 **Reads as target-specific but is a pure modality × phase benchmark.** `probability_of_approval` is a
   static lookup × oncology factor with *zero* target/molecule/biology input — identical for every program at a
