@@ -88,8 +88,9 @@ sourced and invented numbers.
 > as a phase×modality benchmark identical for every program; "Risk-adjusted revenue" is relabelled **gross
 > profit**; the BCR is flagged undiscounted + asymmetric; the verdict bands are flagged unsourced; and the
 > BIO (preclinical estimate) / Wong (success rates, not costs) / DiMasi (costs) attribution is corrected.
-> **Still open:** renaming the `risk_adjusted_revenue_musd` JSON key (deferred — needs regenerating the
-> committed example).
+> The `risk_adjusted_revenue_musd` JSON key has now also been **renamed** to
+> `risk_adjusted_gross_profit_musd`. The only inherent residue is that P(approval) is a phase×modality
+> benchmark with no target-specific signal — which the readout now states outright.
 
 - ⏳ 🟠 **Reads as target-specific but is a pure modality × phase benchmark.** `probability_of_approval` is a
   static lookup × oncology factor with *zero* target/molecule/biology input — identical for every program at a
@@ -99,9 +100,10 @@ sourced and invented numbers.
   the docstring + dict comment now state the preclinical 6% is a rough author estimate NOT in the BIO report.
 - ✅ 🟡 **Wong et al. 2019 cited for per-phase cost it does not provide.** *(`cad/cost_benefit.py`.)* **Fixed:**
   attribution corrected — per-phase cost is DiMasi-lineage; Wong is for success rates/durations.
-- ◐ 🟠 **"Revenue" is actually risk-adjusted gross profit.** Multiplied by an 0.80 gross-margin factor.
-  *(`cad/cost_benefit.py`.)* **Fixed (label):** the readout now says "Risk-adj. gross profit" and notes the
-  `revenue` JSON key is this gross-profit figure. **Still open:** renaming the JSON key (deferred, cosmetic).
+- ✅ 🟠 **"Revenue" was actually risk-adjusted gross profit** (multiplied by an 0.80 gross-margin factor).
+  *(`cad/cost_benefit.py`.)* **Fixed:** the readout says "Risk-adj. gross profit" AND the JSON key is renamed
+  `risk_adjusted_revenue_musd` → `risk_adjusted_gross_profit_musd`, with every reader (the verifier, the
+  SUMMARY) updated in lockstep.
 - ✅ 🟠 **No time-value discounting over a ~9.5-year horizon.** *(`cad/cost_benefit.py`.)* **Fixed (disclosed):**
   the BCR line now states it is undiscounted (so it overstates a true rNPV).
 - ✅ 🟡 **Asymmetric risk treatment** (revenue LOA-weighted, cost not). *(`cad/cost_benefit.py`.)* **Fixed

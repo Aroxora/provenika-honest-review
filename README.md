@@ -159,14 +159,19 @@ The private codebase is under active remediation. As of this review:
 - ✅ **Honest "63 tools" framing + staleness surfacing** — the README states only ~21 of the 63 tools are
   keyless live lookups; the precompute index stamps each target's own refresh date so a stale `/explore` file
   is visible rather than masked by the advancing index date.
-- ⏳ **Remaining:** the cost-benefit `risk_adjusted_revenue_musd` JSON key rename (deferred — bundled with a
-  data regen), and the inherent structure gaps that can only be flagged, not auto-resolved (apo/holo + mutation
-  status). The committed `/explore` data and sample run are being regenerated to match the fixed algorithms.
+- ✅ **Cost-benefit JSON key renamed** — `risk_adjusted_revenue_musd` → `risk_adjusted_gross_profit_musd`, every
+  reader (verifier, SUMMARY) updated in lockstep; the verifier gate stays green. The committed `/explore` data
+  has been **regenerated** so all 38 targets match the fixed cheminformatics rules and potency-ordered triage.
+- ⏳ **In progress:** **holo-aware structure selection** — the coverage-aware pick can land on an *apo*
+  structure (e.g. EGFR now resolves to apo 4UV7), so a preference for a ligand-bound structure on the docking
+  path is being added; and a **deeper verifier pass** (re-pulling more hit columns + cross-checking
+  `provenance.json`).
 
 **Nearly every concrete downfall this review documents has now been fixed** — see the commit history of the
-(private) codebase. What remains is either inherent (a triage tool cannot confirm apo/holo without docking) or
-cosmetic (a JSON key rename). The honest headline is unchanged: useful **research triage**, still **not a
-validated CADD pipeline** and **never a clinical tool**.
+(private) codebase. What remains is either actively in progress (above) or inherent: a triage tool cannot
+confirm a structure's apo/holo or mutation state, or that a molecule works, without lab work. The honest
+headline is unchanged: useful **research triage**, still **not a validated CADD pipeline** and **never a
+clinical tool**.
 
 ## On "validation" and "clinical use"
 
