@@ -130,15 +130,16 @@ are stronger than the code delivers.
 > gaps have since closed: each top hit's **SMILES, QED, AND potency (`best_pchembl`) are now all independently
 > re-fetched** from ChEMBL (commits `ae5d774`, `ae21871`), **`provenance.json` is cross-checked** against the
 > artifacts (`e3fbeb5`), and the hits check now covers **all 25 shortlist rows** (the top-5 cap was raised). So
-> a self-consistent potency+score fabrication no longer passes. **Inherent residues (by design):** the
-> display-only descriptor columns (mw/alogp/TPSA/similarity, which do NOT feed the ranking score) are still read
-> from the file, and **DRIFT still exits 0** — because a within-tolerance change in a living database is
-> legitimate growth, not fabrication; it is now made visible, not silent.
+> a self-consistent potency+score fabrication no longer passes. **And the descriptors are now re-fetched too**
+> (mw/alogp/TPSA, commit `04a1726`), so **EVERY ChEMBL-sourced shortlist figure** — SMILES, QED, potency, and
+> descriptors — is independently re-pulled across all 25 rows; the original "every figure re-pulled" claim is now
+> literally true for the shortlist. **Sole residue (by design):** **DRIFT exits 0** — a within-tolerance change
+> in a living database is legitimate growth, not fabrication; it is now shown, not silent.
 
-- ✅ 🔴 **The score-driving ligand numbers are now re-pulled.** Each top hit's **SMILES, QED, and potency
-  (`best_pchembl`) are independently re-fetched from ChEMBL** and compared (commits `ae5d774`, `ae21871`), for
-  all 25 shortlist rows. **Residue:** the display-only descriptor columns (mw/alogp/TPSA/similarity) — which do
-  NOT feed the ranking score — are still read from the file. *(`cad/verify.py`.)*
+- ✅ 🔴 **Every ChEMBL-sourced ligand figure is now re-pulled.** Each shortlist hit's **SMILES, QED, potency
+  (`best_pchembl`), AND mw/alogp/TPSA are independently re-fetched from ChEMBL** and compared (commits
+  `ae5d774`, `ae21871`, `04a1726`), across all 25 rows — so the original "every figure re-pulled" claim is now
+  literally true for the shortlist. *(`cad/verify.py`.)*
 - ✅ 🟠 **A self-consistent potency fabrication is now caught.** Editing `best_pchembl` + its matching score no
   longer slips through: potency is independently re-fetched from ChEMBL and compared (live < saved FAILs), as
   are SMILES and QED. *(`cad/verify.py`.)*

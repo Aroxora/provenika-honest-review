@@ -47,8 +47,8 @@ where it is due:
   re-pulls each top hit's **SMILES (byte-equality), QED, and potency (`best_pchembl`)** from ChEMBL over a
   raw-HTTP path (all 25 shortlist rows), cross-checks the `provenance.json` manifest against the artifacts, and
   deterministically recomputes several artifacts, failing CI on mismatch. As a *tamper-detector and
-  reproducibility gate* this is more than most pipelines offer — the only residue is the display-only
-  descriptor columns (mw/alogp/TPSA), which don't feed the ranking and are still read from the file.
+  reproducibility gate* this is more than most pipelines offer — **every ChEMBL-sourced shortlist figure is now
+  re-pulled**, and the only by-design residue is that DRIFT (legitimate live-database growth) exits 0.
 - **Honest by construction, mostly.** The in-code disclaimers are candid, a CI "medical-safety" audit
   fails the build on any dosing/treatment/prognosis output, and the pitch docs leave traction as explicit
   `[fill in]` placeholders rather than inventing it. The project does **not** fabricate adoption.
