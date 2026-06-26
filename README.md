@@ -131,13 +131,15 @@ The private codebase is under active remediation. As of this review:
 - ✅ **Structure fetch now handles mmCIF** — many modern/large PDB entries have no legacy `.pdb` file, so the
   docking-box stage used to silently 404 on them; it now falls back to `.cif` and parses the mmCIF atom loop.
   *(Tested, committed.)*
-- ✅ **The validation harness has now been RUN** (`cad/validate.py`, against AutoDock Vina 1.2.7 + Open Babel
-  3.1.1). Running it first exposed that the harness *couldn't compute RMSD at all* (every complex errored) — a
-  real bug, since fixed (it now uses `obrms`). The measured result on the 3-complex starter benchmark:
-  **3POZ 1.15 Å (correct), 1M17 7.86 Å (not reproduced), imatinib prep-failed — 1/2 evaluable correct, mean
-  4.5 Å.** So the pipeline reproduces *some* crystal poses but not reliably; the crude prep (no proper receptor
-  protonation, Open Babel ligand PDBQT) is the cause. **Measured, not unrun — and the measurement says it is
-  not yet validated for pose accuracy.** Evidence: the private repo's `examples/validation-redock/`.
+- ✅ **The validation harness has been RUN — and the pipeline now PASSES redocking** (`cad/validate.py`,
+  against AutoDock Vina 1.2.7). The honest path there is the point: running it first exposed a harness bug (it
+  errored on *every* RMSD — fixed via `obrms`), then exposed that the crude Open Babel prep failed the science
+  (erlotinib redocked at 7.9 Å). Upgrading to **docking-grade prep — Meeko (ligand) + pdb2pqr (receptor
+  protonation)** + a focused box — gives the reproducible result **1M17 1.21 Å and 3POZ 1.13 Å, both correct
+  (≤2 Å), 2/2 evaluable, mean 1.17 Å** (imatinib docks but won't RMSD-match). So with proper prep the pipeline
+  **reproduces known binding modes.** `dock.py` uses these tools when present, falling back to Open Babel.
+  Caveats stay: a 3-complex starter set, pose reproduction ≠ prospective ≠ clinical. Evidence: the private
+  repo's `examples/validation-redock/`.
 - ✅ **Structure selection is now coverage-aware** — `pick_best_pdb` prefers structures that span a
   substantial fraction of the protein over tiny high-resolution domain fragments, reads the **AlphaFold pLDDT**
   confidence it used to ignore, and flags that only fragment F1 is fetched + that apo/holo and mutations are
@@ -194,10 +196,10 @@ clinical tool**.
 Two questions worth answering plainly, because they are easy to conflate:
 
 - **"Is it validated?"** Validation is *measured evidence*, not a badge — so we **ran it** (redocking against
-  AutoDock Vina). The honest result: **1 of 2 evaluable complexes redocked correctly (3POZ 1.15 Å), the other
-  did not (1M17 7.86 Å), one ligand wouldn't prep — mean 4.5 Å.** So it is now *measured*, and the measurement
-  says **not validated for pose accuracy** (the crude prep is the cause). A good redocking RMSD would earn
-  cautious trust in *triage* anyway — never proof of a prospective or clinical result.
+  AutoDock Vina), fixed the prep when it failed, and **it now passes**: **1M17 1.21 Å and 3POZ 1.13 Å, both
+  correct (≤2 Å), 2/2 evaluable, mean 1.17 Å** with docking-grade prep (Meeko + pdb2pqr). So the docking
+  **reproduces known binding modes** — *measured*, on a small benchmark. That earns cautious trust in *triage*;
+  it is still **not** prospective accuracy, **not** an affinity/enrichment validation, and **never** clinical.
 - **"Can it be used clinically?"** **No, and it should not be.** Software that informs diagnosis, prognosis,
   or treatment is a regulated medical device (FDA SaMD / EU MDR) requiring clinical-validation studies, a
   quality system, and clearance — not a code change. This tool stays a research/triage aid; a CI medical-
