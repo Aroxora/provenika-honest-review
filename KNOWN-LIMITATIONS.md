@@ -5,7 +5,16 @@ against the cited file. Status: **37 confirmed, 5 partly-confirmed, 0 refuted.**
 from the standpoint of "could this mislead a researcher who trusts the output." Line numbers are as of
 2026-06-26 and will drift as fixes land. Raw per-finding evidence: [`audit-evidence/`](audit-evidence/).
 
-Legend: 🔴 high · 🟠 medium · 🟡 low · ✅ fixed · ⏳ open
+Legend: 🔴 high · 🟠 medium · 🟡 low · ✅ fixed · ◐ partly · ⏳ open
+
+> **Remediation status (updated):** **most items below have since been FIXED** in the private codebase
+> (docking-box selection + geometry, `--autobox`, mmCIF fetch, coverage-aware structure pick + AlphaFold
+> pLDDT, exact-gene-symbol resolution, "bioactivity records"/"docking feasible" relabels, potency-ordered
+> triage, Veber/`clean`/Brenk fidelity, verifier + README de-overclaiming, "63 tools" framing, staleness
+> surfacing) plus a new validation harness and clinical-pathway doc. See the **README's "Status" section**
+> for the per-item summary; that is the current source of truth. Individual entries below may still read in
+> the present tense as originally found. What remains is inherent (apo/holo + mutation can only be flagged,
+> not auto-resolved by a triage tool) or cosmetic (one JSON key rename).
 
 ---
 

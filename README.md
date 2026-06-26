@@ -149,9 +149,24 @@ The private codebase is under active remediation. As of this review:
   (dossier counts + top-5 SMILES live, deterministic artifacts recomputed), that DRIFT is symmetric and exits
   0, and that potency/QED columns and `provenance.json` are **not** independently re-verified (a self-consistent
   fabrication can pass). "Impossible to hide" → "a fabricated number is easy to catch".
-- ⏳ **Open:** see [`KNOWN-LIMITATIONS.md`](KNOWN-LIMITATIONS.md) for what remains — `clean`/Veber/Egan
-  cheminformatics fidelity (+ a committed-data refresh), the box center↔size reference-point inconsistency,
-  PAINS/Brenk array truncation, committed-data staleness surfacing, and the "63 OSINT tools" framing.
+- ✅ **Docking box is now geometrically consistent** — centered on the bounding-box midpoint (was the atom
+  mean, a different reference than the size), so the box is symmetric about the ligand.
+- ✅ **Cheminformatics rule fidelity** — Veber now includes the omitted HBD+HBA≤12 clause; `clean` now
+  requires zero **Brenk** alerts (175 served compounds were "clean" while carrying Brenk alerts); PAINS/Brenk
+  name arrays are no longer truncated to 5; Egan is documented as a rectangular approximation.
+- ✅ **Ligand triage is no longer an arbitrary slice** — the ChEMBL scan is `order_by=-pchembl_value`, so a
+  bounded/budget-truncated scan keeps the genuinely most-potent records; the assay-type pooling is documented.
+- ✅ **Honest "63 tools" framing + staleness surfacing** — the README states only ~21 of the 63 tools are
+  keyless live lookups; the precompute index stamps each target's own refresh date so a stale `/explore` file
+  is visible rather than masked by the advancing index date.
+- ⏳ **Remaining:** the cost-benefit `risk_adjusted_revenue_musd` JSON key rename (deferred — bundled with a
+  data regen), and the inherent structure gaps that can only be flagged, not auto-resolved (apo/holo + mutation
+  status). The committed `/explore` data and sample run are being regenerated to match the fixed algorithms.
+
+**Nearly every concrete downfall this review documents has now been fixed** — see the commit history of the
+(private) codebase. What remains is either inherent (a triage tool cannot confirm apo/holo without docking) or
+cosmetic (a JSON key rename). The honest headline is unchanged: useful **research triage**, still **not a
+validated CADD pipeline** and **never a clinical tool**.
 
 ## On "validation" and "clinical use"
 
