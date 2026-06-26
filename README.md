@@ -149,6 +149,9 @@ Two questions worth answering plainly, because they are easy to conflate:
   safety audit fails the build on any clinical output. A *molecule* it helps surface can reach patients only
   through the full wet-lab → preclinical → IND → trials → approval pipeline, none of which this repo performs.
 
+The full, honest map of that route — and exactly where this tool may and may not go — is in
+[**`CLINICAL-PATHWAY.md`**](CLINICAL-PATHWAY.md).
+
 ---
 
 ## Methodology & reproducibility
