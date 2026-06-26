@@ -59,9 +59,11 @@ This is the category the project most needs to confront: numbers that are *compu
   predicted model is handed off identically to a good one; the "validate pLDDT before docking" string is
   advice, not an enforced gate, and proteins >~2700 residues lose everything past F1.
   *(`cad/fetch_structure.py:83-84,88,158-171`.)*
-- ⏳ 🟠 **Blind-box docking uses `--autobox`, which stock AutoDock Vina does not support.** The no-center branch
-  passes a flag that exists only in smina/gnina (and even there it is `--autobox_ligand`), so the documented
-  blind-docking path errors out instead of running. *(`cad/dock.py:160-163`.)*
+- ✅ 🟠 **Blind-box docking used `--autobox`, which stock AutoDock Vina does not support.** The no-center branch
+  passed a flag that exists only in smina/gnina (and even there it is `--autobox_ligand`), so the documented
+  blind-docking path errored out instead of running. *(`cad/dock.py:160-163`.)* **Fixed:** the blind path now
+  computes a real whole-receptor box (bounding-box midpoint + extent + margin) and passes explicit
+  `--center/--size`, since Vina has no auto-box mode; a regression test guards against the flag returning.
 
 ---
 
@@ -199,7 +201,7 @@ The chemistry is real RDKit and faithful — these are fidelity caveats, not fak
    (target-independent, gross-profit, undiscounted).
 6. ⏳ Verifier honesty: scope the "every figure" headline; re-pull potency/QED; verify `provenance.json`;
    make DRIFT/SKIP non-silent; raise or document the top-5/25 caps.
-7. ⏳ Fix the `--autobox` Vina path; make `clean` include Brenk; complete Veber.
+7. ✅ Fix the `--autobox` Vina path — *done.* ⏳ Make `clean` include Brenk; complete Veber.
 8. ⏳ Reconcile the README aggregate framing with the per-tool reality and the buried caveats.
 
 *Nothing here is medical advice. Provenika is research tooling for the in-silico front of discovery, not a

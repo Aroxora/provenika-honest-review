@@ -120,9 +120,12 @@ The private codebase is under active remediation. As of this review:
   heavy-atom-size scoring) instead of the largest hetero group, surfaces the runners-up, and warns when
   the pick is uncertain; the pipeline/verifier share one selection function so a saved box still
   re-verifies exactly. *(Tested, committed.)*
+- ✅ **Docking blind-box no longer passes `--autobox`** — stock AutoDock Vina has no auto-box mode, so the
+  no-`--center` path now builds a real whole-receptor box and passes explicit `--center/--size`, instead of
+  erroring out. *(Tested, committed.)*
 - ⏳ **Open:** the remaining items above — see [`KNOWN-LIMITATIONS.md`](KNOWN-LIMITATIONS.md) for the
-  prioritized queue (SA-score schema fragility, `.cif`-only structure fetch, holo/coverage-aware structure
-  selection, feasibility-verdict labeling, verifier-scope honesty, and the doc reconciliation).
+  prioritized queue (`.cif`-only structure fetch, holo/coverage-aware structure selection, feasibility-verdict
+  labeling, verifier-scope honesty, `clean`/Veber fidelity, and the doc reconciliation).
 
 ---
 
