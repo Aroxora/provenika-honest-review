@@ -114,6 +114,12 @@ independent raw-HTTP SMILES check, and recomputes several artifacts, failing CI 
 claims — "every figure re-pulled," "fabrication impossible to hide," "no value originates from a model" —
 are stronger than the code delivers.
 
+> ◐ **Partly fixed.** The overclaiming WORDING is corrected: `verify.py`'s headline/banner and the README now
+> state exactly what is and isn't re-checked (dossier counts + top-5 SMILES live; deterministic artifacts
+> recomputed), that DRIFT is symmetric and exits 0, and that potency/QED columns + `provenance.json` are not
+> independently re-verified; "fabrication impossible to hide" → "a fabricated number is easy to catch". The
+> underlying coverage GAPS below remain by design — now disclosed rather than overstated.
+
 - ⏳ 🔴 **Most ligand-shortlist numbers are never re-pulled.** For each top hit only the canonical SMILES is
   re-fetched; potency (`best_pchembl`), `qed`, `ro5_violations`, similarity, and MW/alogp/etc. are read from the
   file and fed unchanged into the score recompute — so the score proves only that the column is *internally

@@ -139,9 +139,19 @@ The private codebase is under active remediation. As of this review:
   benchmark identical for every program (no target signal), relabels gross profit (was "revenue"), flags the
   undiscounted/asymmetric ratio and the unsourced verdict bands, and corrects the BIO/Wong/DiMasi attribution.
   *(Labels/attribution only — the JSON is unchanged; the field-name rename is deferred.)*
-- ⏳ **Open:** see [`KNOWN-LIMITATIONS.md`](KNOWN-LIMITATIONS.md) for the prioritized queue still remaining
-  (cross-stage target-resolution mismatch, "potent activities" relabel, "docking feasible" qualifier,
-  verifier-scope honesty, `clean`/Veber fidelity + committed-data refresh, and the doc reconciliation).
+- ✅ **Cross-stage target resolution + dossier labels** — the target dossier now applies the same exact
+  gene-symbol guard as the other stages (so "AKT1" no longer resolves to AKT1S1); "potent activities" is
+  relabelled an honest "ChEMBL bioactivity records (any pChEMBL, not potency-filtered, records not molecules)"
+  count; and "docking feasible: yes" becomes "structures exist — confirm one is holo and covers the site
+  (not auto-checked)". *(Tested.)*
+- ✅ **The verifier and README stop overclaiming** — the `verify.py` banner/headline and the README no longer
+  say "every figure re-pulled" / "fabrication impossible to hide". They now state exactly what's re-checked
+  (dossier counts + top-5 SMILES live, deterministic artifacts recomputed), that DRIFT is symmetric and exits
+  0, and that potency/QED columns and `provenance.json` are **not** independently re-verified (a self-consistent
+  fabrication can pass). "Impossible to hide" → "a fabricated number is easy to catch".
+- ⏳ **Open:** see [`KNOWN-LIMITATIONS.md`](KNOWN-LIMITATIONS.md) for what remains — `clean`/Veber/Egan
+  cheminformatics fidelity (+ a committed-data refresh), the box center↔size reference-point inconsistency,
+  PAINS/Brenk array truncation, committed-data staleness surfacing, and the "63 OSINT tools" framing.
 
 ## On "validation" and "clinical use"
 
