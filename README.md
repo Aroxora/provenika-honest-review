@@ -43,10 +43,11 @@ where it is due:
   straight to real docking/ADMET tools — a real time-saver *if* treated as an unvalidated triage start.
 - **Structure + docking-box bootstrap.** Fetches a real experimental PDB (or AlphaFold model) and computes
   a Vina-ready box, so a real docking run can begin. (The box selection was recently hardened — see below.)
-- **A real provenance/verify discipline.** `verify.py` re-fetches ChEMBL/UniProt counts, does an
-  independent raw-HTTP SMILES byte-equality check against ChEMBL, and deterministically recomputes several
-  artifacts, failing CI on mismatch. As a *tamper-detector and reproducibility gate* this is more than
-  most pipelines offer.
+- **A real provenance/verify discipline.** `verify.py` re-fetches ChEMBL/UniProt counts, independently
+  re-pulls each top hit's SMILES (byte-equality) **and QED** from ChEMBL over a raw-HTTP path, cross-checks
+  the `provenance.json` manifest against the artifacts, and deterministically recomputes several artifacts,
+  failing CI on mismatch. As a *tamper-detector and reproducibility gate* this is more than most pipelines
+  offer — though potency/descriptor columns are still trusted from the file (see "Status").
 - **Honest by construction, mostly.** The in-code disclaimers are candid, a CI "medical-safety" audit
   fails the build on any dosing/treatment/prognosis output, and the pitch docs leave traction as explicit
   `[fill in]` placeholders rather than inventing it. The project does **not** fabricate adoption.
@@ -90,11 +91,14 @@ Full detail, with `file:line` evidence and severity, is in
   numbers (`cad/cost_benefit.py`).
 
 ### The "auditable / fabrication-impossible" framing overstates the code
-- "Every figure re-pulled from source" is not true: **most numeric columns in the ligand shortlist are
-  never re-fetched** — the score is recomputed from the same unverified row. **DRIFT silently blesses**
-  changed counts within a tolerance and still prints "No fabrications." Only the **top 5 hits / 25
-  liabilities** are checked. `provenance.py` only validates the *label string* `fetched`/`computed`, not
-  that the value truly came from the source, and `verify.py` **never reads `provenance.json`** (`cad/verify.py`).
+- "Every figure re-pulled from source" is not true: **most numeric columns in the ligand shortlist are not
+  re-fetched** — potency (`best_pchembl`) and the descriptor columns are read from the file and the score is
+  recomputed from that same row (SMILES and QED *are* now re-fetched independently — see "Status"). **DRIFT
+  silently blesses** changed counts within a tolerance and still prints "No fabrications." Only the **top 5
+  hits / 25 liabilities** are checked. `provenance.py`'s write-time check only validates the *label string*
+  `fetched`/`computed`, not that the value truly came from the source. *(`cad/verify.py` now does read and
+  cross-check `provenance.json` against the artifacts — see "Status"; the potency/descriptor gap, the fixed
+  caps, and DRIFT-exits-0 remain.)*
 
 ### Cheminformatics fidelity caveats
 - The `clean` flag **ignores Brenk alerts** (175 served compounds are `clean:true` yet carry Brenk
@@ -146,9 +150,9 @@ The private codebase is under active remediation. As of this review:
   (not auto-checked)". *(Tested.)*
 - ✅ **The verifier and README stop overclaiming** — the `verify.py` banner/headline and the README no longer
   say "every figure re-pulled" / "fabrication impossible to hide". They now state exactly what's re-checked
-  (dossier counts + top-5 SMILES live, deterministic artifacts recomputed), that DRIFT is symmetric and exits
-  0, and that potency/QED columns and `provenance.json` are **not** independently re-verified (a self-consistent
-  fabrication can pass). "Impossible to hide" → "a fabricated number is easy to catch".
+  (dossier counts + top-hit SMILES live, deterministic artifacts recomputed), that DRIFT is symmetric and exits
+  0, and that the potency/descriptor columns are **not** independently re-verified (a self-consistent potency
+  fabrication can still pass). "Impossible to hide" → "a fabricated number is easy to catch".
 - ✅ **Docking box is now geometrically consistent** — centered on the bounding-box midpoint (was the atom
   mean, a different reference than the size), so the box is symmetric about the ligand.
 - ✅ **Cheminformatics rule fidelity** — Veber now includes the omitted HBD+HBA≤12 clause; `clean` now
@@ -169,6 +173,12 @@ The private codebase is under active remediation. As of this review:
   entries, the coverage preference can still surface an apo full-length structure — correctly flagged apo.)*
 - ✅ **The verifier now reads `provenance.json`** — `verify_manifest` cross-checks the manifest's figures
   against the artifacts (origins re-validated; values mirror-checked), so a manifest edited in isolation FAILs.
+- ✅ **The verifier now independently re-fetches each top hit's QED** — `verify_hits` re-pulls every top hit's
+  `qed_weighted` straight from ChEMBL over the same raw-HTTP path as the SMILES check and compares it, so a
+  fabricated QED (which would otherwise feed a self-consistent triage score) is caught. The independently
+  re-verified set is now **SMILES + QED + the manifest**. *(Honest residue: each hit's potency (`best_pchembl`)
+  and the mw/alogp/TPSA/ro5 columns are still read from the file, the top-5 hits / 25 liabilities caps remain,
+  and DRIFT still exits 0 — so a self-consistent potency fabrication can still pass.)*
 
 **Nearly every concrete downfall this review documents has now been fixed** — see the commit history of the
 (private) codebase. What remains is either actively in progress (above) or inherent: a triage tool cannot

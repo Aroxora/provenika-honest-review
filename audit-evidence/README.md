@@ -5,6 +5,11 @@ inaccuracy was found by reading the (private) Provenika source, then **independe
 separate adversarial pass instructed to open the cited file and confirm / partly-confirm / refute /
 mark-unverifiable. Tally: **37 confirmed, 5 partly, 0 refuted.**
 
+> These files are the **historical raw audit, preserved as taken on 2026-06-26** — they are intentionally not
+> updated as fixes land. **Most of the items below have since been remediated** in the private codebase; see the
+> public [README's "Status" section](../README.md) (and [`../KNOWN-LIMITATIONS.md`](../KNOWN-LIMITATIONS.md))
+> for the current per-item state.
+
 ## Files
 
 - **`verified-limitations.txt`** — the publishable list: each verified finding with its `[CONFIRMED]` /

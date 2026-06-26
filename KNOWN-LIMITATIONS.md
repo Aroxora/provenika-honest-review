@@ -10,7 +10,8 @@ Legend: 🔴 high · 🟠 medium · 🟡 low · ✅ fixed · ◐ partly · ⏳ o
 > **Remediation status (updated):** **most items below have since been FIXED** in the private codebase
 > (docking-box selection + geometry, `--autobox`, mmCIF fetch, coverage-aware structure pick + AlphaFold
 > pLDDT, exact-gene-symbol resolution, "bioactivity records"/"docking feasible" relabels, potency-ordered
-> triage, Veber/`clean`/Brenk fidelity, verifier + README de-overclaiming, "63 tools" framing, staleness
+> triage, Veber/`clean`/Brenk fidelity, verifier + README de-overclaiming plus a deeper verify
+> (`provenance.json` cross-check + independent QED re-fetch), "63 tools" framing, staleness
 > surfacing) plus a new validation harness and clinical-pathway doc. See the **README's "Status" section**
 > for the per-item summary; that is the current source of truth. Individual entries below may still read in
 > the present tense as originally found. What remains is inherent (apo/holo + mutation can only be flagged,
@@ -125,19 +126,26 @@ independent raw-HTTP SMILES check, and recomputes several artifacts, failing CI 
 claims — "every figure re-pulled," "fabrication impossible to hide," "no value originates from a model" —
 are stronger than the code delivers.
 
-> ◐ **Partly fixed.** The overclaiming WORDING is corrected: `verify.py`'s headline/banner and the README now
-> state exactly what is and isn't re-checked (dossier counts + top-5 SMILES live; deterministic artifacts
-> recomputed), that DRIFT is symmetric and exits 0, and that potency/QED columns + `provenance.json` are not
-> independently re-verified; "fabrication impossible to hide" → "a fabricated number is easy to catch". The
-> underlying coverage GAPS below remain by design — now disclosed rather than overstated.
+> ◐ **Partly fixed — and the coverage itself widened.** The overclaiming WORDING is corrected (`verify.py`'s
+> headline/banner and the README state exactly what is and isn't re-checked), AND two real gaps have since
+> closed: each top hit's **QED is now independently re-fetched** from ChEMBL (commit `ae5d774`) and
+> **`provenance.json` is now cross-checked** against the artifacts (commit `e3fbeb5`; §3 last item). So the
+> independently re-verified set is now **SMILES + QED + the manifest** — but each hit's **potency
+> (`best_pchembl`) and descriptor columns (mw/alogp/TPSA/ro5/similarity) are still read from the file, not
+> re-fetched**, the **top-5 hits / first-25 liabilities caps remain**, and **DRIFT still exits 0**. A
+> self-consistent fabrication of potency + its matching score still passes. The remaining gaps below are now
+> disclosed, not overstated.
 
-- ⏳ 🔴 **Most ligand-shortlist numbers are never re-pulled.** For each top hit only the canonical SMILES is
-  re-fetched; potency (`best_pchembl`), `qed`, `ro5_violations`, similarity, and MW/alogp/etc. are read from the
-  file and fed unchanged into the score recompute — so the score proves only that the column is *internally
-  consistent with its own row*, not that the inputs are real. *(`cad/verify.py:189-205`; only SMILES re-pulled at
-  `:155-180`; overstated at `verify.py:7`, `:397`, `README.md:35,135`.)*
-- ⏳ 🟠 **A self-consistent fabrication passes.** Edit potency *and* its matching score together and the row
-  reproduces and passes; only an isolated score-column edit is caught. *(`cad/verify.py:189-205`.)*
+- ◐ 🔴 **Most ligand-shortlist numbers are still not re-pulled (SMILES + QED now are).** For each top hit the
+  canonical **SMILES** and the **`qed`** are now independently re-fetched from ChEMBL and compared; but potency
+  (`best_pchembl`), `ro5_violations`, similarity, and MW/alogp/TPSA are still read from the file and fed
+  unchanged into the score recompute — so for those columns the score proves only that the column is *internally
+  consistent with its own row*, not that the inputs are real. *(QED re-fetch `cad/verify.py:199-219`; SMILES
+  re-fetch `:172-197`; score recompute `:221-247`.)*
+- ⏳ 🟠 **A self-consistent potency fabrication still passes.** Edit `best_pchembl` *and* its matching score
+  together and the row reproduces and passes; only an isolated score-column edit is caught. (QED can no longer be
+  silently fabricated this way — it is re-fetched and compared — but potency and the other descriptor inputs
+  can.) *(`cad/verify.py:221-247`.)*
 - ⏳ 🟠 **DRIFT silently blesses changed numbers and still prints "No fabrications."** Any saved-vs-live
   difference within `max(2, 10%)` (symmetric — a count going *down* counts too) is a non-failing DRIFT that
   exits 0. *(`cad/verify.py:83-85,413,418`.)*
@@ -148,11 +156,14 @@ are stronger than the code delivers.
   repo states this limitation explicitly elsewhere.)* And the "byte-equal to ChEMBL" pull reads the same
   `canonical_smiles` field the pipeline read — a separate code path, not an orthogonal data source. *(partly.)*
   *(`cad/verify.py:155-180`.)*
-- ⏳ 🟠 **`provenance.py` validates only the label string, not the value's source.** `Figure.__post_init__`
-  raises on any origin other than `fetched`/`computed` (so a literal `model` label *does* raise), but nothing
-  binds the value to the cited source — a model-produced number passed as `manifest.fetched(...)` is accepted.
-  The "no value originates from a model" guarantee is a labeling convention, not enforcement. *(partly.)*
-  *(`cad/provenance.py:93-98,108-113`; `README.md:34`.)*
+- ◐ 🟠 **`provenance.py`'s write-time check validates only the label string, not the value's source.**
+  `Figure.__post_init__` raises on any origin other than `fetched`/`computed` (so a literal `model` label *does*
+  raise), but nothing at write time binds the value to the cited source — a model-produced number passed as
+  `manifest.fetched(...)` is accepted. The "no value originates from a model" guarantee is a labeling
+  convention, not write-time enforcement. **Narrowed:** `verify.py`'s new `verify_manifest` now re-validates
+  every figure's origin and cross-checks the figures that *mirror an artifact value* against that artifact (see
+  the §3 last item), so an isolated manifest edit is caught after the fact — but a figure with no mirrored
+  artifact is still trusted on its label alone. *(`cad/provenance.py:93-98,108-113`; `cad/verify.py:280-345`.)*
 - ✅ 🟡 **The manifest was never verified against the artifacts.** `verify.py` imported provenance only for URLs
   and never read `provenance.json` back. *(`cad/verify.py`.)* **Fixed:** new `verify_manifest` re-validates every
   figure's origin (an illegal `model` origin FAILs) and cross-checks the figures that mirror an artifact value
@@ -229,8 +240,8 @@ The chemistry is real RDKit and faithful — these are fidelity caveats, not fak
 4. ⏳ Holo/coverage/mutation-aware structure selection; surface pLDDT; fetch all AlphaFold fragments.
 5. ⏳ Re-label "potent activities" (apply a real threshold or rename) and the feasibility verdict
    (target-independent, gross-profit, undiscounted).
-6. ⏳ Verifier honesty: scope the "every figure" headline; re-pull potency/QED; verify `provenance.json`;
-   make DRIFT/SKIP non-silent; raise or document the top-5/25 caps.
+6. ◐ Verifier honesty: headline scoped ✅, QED re-pulled ✅, `provenance.json` cross-checked ✅. STILL OPEN —
+   re-pull potency/descriptors, make DRIFT/SKIP non-silent, and lift the top-5/25 caps.
 7. ✅ Fix the `--autobox` Vina path — *done.* ⏳ Make `clean` include Brenk; complete Veber.
 8. ⏳ Reconcile the README aggregate framing with the per-tool reality and the buried caveats.
 
