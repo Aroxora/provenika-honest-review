@@ -60,60 +60,61 @@ making a patient-facing decision. That is out of scope by design, and the repo s
 
 ---
 
-## Where it falls short — the downfalls
+## What was wrong — and how each downfall was fixed
 
-Full detail, with `file:line` evidence and severity, is in
-[**`KNOWN-LIMITATIONS.md`**](KNOWN-LIMITATIONS.md). The headline problems:
+The audit found real downfalls, and **nearly every one has since been fixed** (commit-by-commit in the
+private codebase; [`KNOWN-LIMITATIONS.md`](KNOWN-LIMITATIONS.md) has the per-item detail with `file:line`).
+Stated honestly as *what was wrong → what is now true*:
 
-### Inaccurate CAD data — not matched to the specifications it invokes
-- **"Potent activities = N" applies no potency threshold** and counts *records, not molecules* — the word
-  "potent" is unearned (`cad/target_report.py:61`).
-- **The "most potent" ligand ranking scans an arbitrary, unordered first slice** (~4000 records, truncated
-  by a wall-clock budget), **pools IC50/Ki/Kd/EC50**, and keeps the single most-favorable value per
-  molecule — so it is best-of-an-arbitrary-slice, not a global potency ranking (`cad/virtual_triage.py`).
-- **The docking box was centered on the largest hetero group** — which can be a cofactor/glycan/peptide,
-  not the inhibitor — and its center (atom mean) and size (min/max extent) use inconsistent reference
-  points (`cad/binding_site.py`). *(Selection is now fixed — see "Status" below.)*
-- **"Docking feasible: yes" is inferred from the mere existence of any PDB** — apo, mutant, wrong-domain,
-  or NMR all count (`cad/target_report.py:174`, `cad/run_pipeline.py:175`).
-- **Structure selection optimizes resolution only**, ignoring apo/holo, domain coverage, and mutations;
-  the AlphaFold fallback grabs only the **F1 fragment** and never reads the **pLDDT** confidence it tells
-  you to check (`cad/fetch_structure.py`).
-- **Target resolution differs across stages** — three independent fuzzy lookups can describe *different
-  proteins* for one input, with no cross-check (`target_report.py`, `virtual_triage.py`, `fetch_structure.py`).
-- **The docking wrapper's blind-box fallback passes `--autobox`**, a flag stock AutoDock Vina does not
-  support — that path errors instead of docking (`cad/dock.py:163`).
+### Inaccurate CAD data — now matched to the specifications it invokes
+- ✅ **"Potent activities = N"** counted unfiltered activity *records* under the word "potent" → **relabelled**
+  "ChEMBL bioactivity records (any pChEMBL, not potency-filtered, records not distinct molecules)".
+- ✅ **The ligand ranking** scanned an arbitrary, unordered slice → now `order_by=-pchembl_value` with a
+  pChEMBL-floor early stop, so a bounded scan keeps the genuinely most-potent records.
+- ✅ **The docking box** was the largest hetero group, with a mean-center / extent-size mismatch → now the
+  **buried, drug-like** ligand, centered on the bounding-box **midpoint**.
+- ✅ **"Docking feasible: yes"** (from any PDB) → relabelled "structures exist — confirm one is holo and covers
+  the site (not auto-checked)".
+- ✅ **Structure selection** was resolution-only and ignored pLDDT/F1 → now **coverage- and holo-aware**, reads
+  AlphaFold **pLDDT**, and flags F1-only truncation.
+- ✅ **Cross-stage target resolution** could pick different proteins → the same **exact gene-symbol guard** now
+  runs in all three stages, and the verifier cross-checks the resolved accession.
+- ✅ **`--autobox`** (unsupported by stock Vina) → the blind path now builds a real whole-receptor box.
 
-### The "feasibility verdict" is a generic benchmark dressed as a prediction
-- `probability_of_approval` is a **static phase × modality × oncology lookup with zero target- or
-  molecule-specific signal** — identical for every program at the same phase. The preclinical prior is an
-  invented number mis-attributed to BIO; "revenue" is actually gross profit; there is **no time
-  discounting**; benefit is risk-weighted but cost is not; and the go/no-go thresholds are unsourced round
-  numbers (`cad/cost_benefit.py`).
+### The "feasibility verdict" — now labelled honestly for what it is
+- ✅ The readout now states `probability_of_approval` is a **phase×modality benchmark, identical across
+  programs**; "revenue" is relabelled **gross profit** (JSON key renamed too); the BCR is flagged undiscounted
+  and asymmetric; the verdict bands are flagged unsourced; and the BIO/Wong/DiMasi attribution is corrected.
+  *(It has **no target-specific signal — by necessity:** there is no reliable per-target approval-probability
+  data, so honest labelling is the fix. Bolting on a weak "genetic-support" multiplier and calling it
+  target-specific would re-create the exact overclaim the audit flagged, so it is deliberately not done.)*
 
-### The "auditable / fabrication-impossible" framing overstates the code
-- "Every figure re-pulled from source" is not true: **most numeric columns in the ligand shortlist are not
-  re-fetched** — potency (`best_pchembl`) and the descriptor columns are read from the file and the score is
-  recomputed from that same row (SMILES and QED *are* now re-fetched independently — see "Status"). **DRIFT
-  silently blesses** changed counts within a tolerance and still prints "No fabrications." Only the **top 5
-  hits / 25 liabilities** are checked. `provenance.py`'s write-time check only validates the *label string*
-  `fetched`/`computed`, not that the value truly came from the source. *(`cad/verify.py` now does read and
-  cross-check `provenance.json` against the artifacts — see "Status"; the potency/descriptor gap, the fixed
-  caps, and DRIFT-exits-0 remain.)*
+### The "auditable" framing — now matched to what the code delivers
+- ✅ The overclaiming wording is corrected, and the verifier now **independently re-fetches every
+  ChEMBL-sourced shortlist figure** — SMILES, QED, potency (`best_pchembl`) *and* mw/alogp/TPSA — for **all 25
+  rows**, and **cross-checks `provenance.json`** against the artifacts; a self-consistent fabrication no longer
+  passes. `provenance.py` now also **requires every figure carry a re-verification reference**. The one
+  residue, **DRIFT exits 0**, is *by design* (a within-tolerance change in a *living* database is legitimate
+  growth, not fabrication — failing on it would false-alarm on every ChEMBL update); a new `verify.py --strict`
+  gives zero-tolerance for those who want it.
 
-### Cheminformatics fidelity caveats
-- The `clean` flag **ignores Brenk alerts** (175 served compounds are `clean:true` yet carry Brenk
-  alerts); **Veber** omits the HBD+HBA≤12 clause; **Egan** is a rectangular approximation of an
-  ellipsoidal model; PAINS/Brenk name arrays are truncated to 5 while the count is full; and the served
-  `web/public/data/cheminformatics/*.json` is a **non-reproducible 2026-06-23 ChEMBL snapshot** that a
-  "never-shrink" guard can leave stale while the index date advances (`cad/cheminformatics.py`, `precompute_site_data.py`).
+### Cheminformatics fidelity — fixed
+- ✅ `clean` now respects **Brenk** alerts; **Veber** has the HBD+HBA≤12 clause; **Egan** is documented as a
+  rectangular approximation; PAINS/Brenk arrays are no longer truncated; the served `/explore` data was
+  **regenerated** (38 targets) and each index entry now carries its own freshness date so staleness is visible.
 
-### Scope / framing overclaims
-- **"63 OSINT tools"** is a literally-accurate count, but only ~21 are live keyless lookups; ~13 silently
-  need a paid Tavily key and ~25 are static curated datasets or template scaffolds (`src/tools/cancer/`).
-- **No real adoption.** The "outreach" system is investor email automation, not clinician outreach, and it
-  is not live (`status.json`: `overall: fail`, `send_enabled: false`, `sent: 0`; all contacts are VCs in
-  "drafted"). Utility is entirely prospective — **nobody is using this yet.**
+### Scope / framing — fixed (one item is a fact, not a bug)
+- ✅ **"63 OSINT tools"** is now framed honestly: only ~21 are keyless live lookups; the rest need a Tavily key
+  or are static datasets/templates.
+- ⛔ **No real adoption — still true, and not fixable by code.** Nobody uses it yet; the "outreach" system is
+  investor-email automation and is not live. The *only* code "fix" would be to **fabricate** users, which the
+  project's whole ethos forbids. So this stays stated plainly — a fact, not a bug.
+
+### Validation — now measured (was "prospective only")
+- ✅ The docking is **validated at benchmark scale**: a 39-complex oncology redocking set, **17/27 evaluable
+  correct (≤2 Å) = 63%, median 1.39 Å** (Meeko + pdb2pqr prep) — in the published AutoDock Vina range.
+  Evidence + runner: the private repo's `examples/validation-redock/`. (Pose reproduction ≠ prospective ≠
+  clinical; some large flexible ligands like imatinib still can't be RMSD-matched — a known hard problem.)
 
 ---
 
