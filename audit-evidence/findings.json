@@ -1,0 +1,966 @@
+{
+  "audits": [
+    {
+      "area": "Economic / feasibility model (cad/cost_benefit.py + scoring in cad/virtual_triage.py)",
+      "summary": "The feasibility model is a transparent deterministic spreadsheet, not a predictive model. Its clinical-phase approval priors (cad/cost_benefit.py:38-41) and clinical-phase costs (cad/cost_benefit.py:47-49) are genuinely and correctly transcribed from the cited BIO/Informa CDSR 2011-2020 and DiMasi 2016 figures \u2014 that part is real and well-attributed. But the surrounding machinery \u2014 the preclinical LOA, the \"filed\" cost, modality multipliers, the oncology factor, gross margin, and every verdict threshold \u2014 are invented heuristics presented inside the same output block under a single \"sources\" line that implies provenance they do not have. The \"probability_of_approval\" is literally a static modality/phase/oncology lookup multiplied together; it carries zero target-specific or molecule-specific signal, yet it is emitted per-\"proposal\" and labeled a feasibility verdict, inviting a target-specific reading. The benefit side mislabels risk-adjusted gross profit as \"revenue,\" applies probability weighting to revenue but not to cost (asymmetric risk treatment), and uses no discounting over a ~9.5-year horizon, all of which inflate the benefit/cost ratio. The triage score weights are explicitly flagged non-validated, which is honest, but QED and Ro5 are combined in a way that double-counts Lipinski-space.",
+      "whatIsReal": [
+        "Clinical-phase LOA priors are accurately transcribed from BIO/Informa CDSR 2011-2020: phase1 0.079, phase2 0.151, phase3 0.460, filed 0.906 (cad/cost_benefit.py:38-41) match the published all-disease phase-to-approval success rates (7.9% / 15.1% / ~46% / 90.6%).",
+        "Clinical per-phase out-of-pocket costs are accurately transcribed from DiMasi et al. 2016: phase1 $25M, phase2 $60M, phase3 $255M (cad/cost_benefit.py:47-49) match DiMasi's $25.3M / $58.6M / $255.4M.",
+        "The arithmetic itself is simple and correct: remaining cost = sum of forward per-phase costs x modality multiplier (cad/cost_benefit.py:80-81); peak revenue = incidence x price x penetration (cad/cost_benefit.py:85); BCR = risk-adjusted profit / cost (cad/cost_benefit.py:90).",
+        "The code is unusually candid in-line: it flags MODALITY_MULT as 'HEURISTIC, not fetched data' (cad/cost_benefit.py:54-55), the oncology factor as an 'editable, transparent adjustment' (cad/cost_benefit.py:66-68), and prints every assumption alongside the result (cad/cost_benefit.py:112-122, 143-147) with a 'not financial advice, not a valuation, not a clinical claim' disclaimer (cad/cost_benefit.py:146-147).",
+        "The triage ranking weights are explicitly labeled a 'TRANSPARENT, NON-VALIDATED ranking HEURISTIC ... not fitted to any benchmark ... never a prediction of efficacy' (cad/virtual_triage.py:228-232), and the underlying inputs (pChEMBL, QED, Ro5 violations) are real ChEMBL-computed values."
+      ],
+      "whatIsStubOrWrapper": [
+        "Preclinical LOA 0.060 (cad/cost_benefit.py:37) is an invented round number \u2014 BIO CDSR is a clinical-phase (Phase I onward) report and contains no preclinical-to-approval rate; the comment '(overall, BIO 2011-2020)' on line 35 implies a source it does not have.",
+        "Modality multipliers (cad/cost_benefit.py:56-63) are hand-set constants applied to cost only \u2014 not to LOA and not to time \u2014 so e.g. CAR-T gets 1.8x cost but the identical approval probability and timeline as a small molecule.",
+        "ONCOLOGY_LOA_FACTOR 0.65 (cad/cost_benefit.py:68) is a single flat multiplier applied across all phases (cad/cost_benefit.py:76); it is not a sourced constant and ignores that the oncology/all-area LOA ratio varies sharply by phase in the BIO data.",
+        "gross_margin 0.80 (cad/cost_benefit.py:86) is a flat heuristic applied to all modalities including small molecules and cell/gene therapies whose real COGS differ greatly.",
+        "'filed' cost $20M and all per-phase durations (cad/cost_benefit.py:45-51) are rough planning estimates, not the DiMasi/Wong figures; DiMasi's preclinical out-of-pocket cost is far larger than the $10M on line 46.",
+        "Verdict thresholds 5 / 1.5 / 0.8 (cad/cost_benefit.py:92-99) are arbitrary cutoffs with no cited basis.",
+        "The entire 'feasibility verdict' is target- and molecule-agnostic: probability_of_approval (cad/cost_benefit.py:76) depends only on phase, modality flag, and oncology flag, so any two programs at the same phase/modality receive an identical verdict."
+      ],
+      "inaccuracies": [
+        {
+          "title": "Preclinical approval prior attributed to BIO but not in BIO report",
+          "claim": "LOA_FROM_PHASE is documented as 'overall, BIO 2011-2020' (cad/cost_benefit.py:35) and the assumptions output cites 'BIO/Informa CDSR 2011-2020' as the source (cad/cost_benefit.py:121).",
+          "reality": "The BIO/Informa/QLS Clinical Development Success Rates report only covers clinical phases (Phase I -> approval onward). It publishes no preclinical-to-approval rate. The 0.060 preclinical value (cad/cost_benefit.py:37) is an invented figure; its own comment hedges 'rough: ~6%' but it is still surfaced under the BIO citation.",
+          "evidence": "cad/cost_benefit.py:35-37, 121",
+          "specMismatch": true,
+          "severity": "high"
+        },
+        {
+          "title": "Risk-adjusted gross profit mislabeled as 'revenue'",
+          "claim": "Output field 'risk_adjusted_revenue_musd' (cad/cost_benefit.py:109) and the printed 'Risk-adjusted revenue' line (cad/cost_benefit.py:139) present the number as revenue.",
+          "reality": "risk_adj_rev = loa * peak_annual_rev * years_at_peak * gross_margin (cad/cost_benefit.py:87) multiplies by gross_margin 0.80, so it is a risk-adjusted gross-profit figure, not revenue. The BCR therefore compares profit to cost while the field name says revenue, which misleads a reader about what is being divided.",
+          "evidence": "cad/cost_benefit.py:86-90, 109, 139",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "No time-value discounting over a ~9.5-year horizon inflates the benefit/cost ratio",
+          "claim": "The model produces a 'risk-adjusted return' and benefit/cost ratio (cad/cost_benefit.py:87-90) used to drive a go/no-go verdict.",
+          "reality": "Peak-sales profit is counted undiscounted (cad/cost_benefit.py:87) even though the summed phase durations from preclinical are 1.5+1.5+2.5+3.0+1.0 = 9.5 years before any sales (cad/cost_benefit.py:45-51), and peak sales occur later still. With no NPV/discount rate, distant revenue is valued at face, materially overstating BCR vs. any real rNPV. There is no discount-rate parameter anywhere in the file.",
+          "evidence": "cad/cost_benefit.py:45-51, 84-90",
+          "specMismatch": false,
+          "severity": "high"
+        },
+        {
+          "title": "Asymmetric risk treatment: revenue is probability-weighted, cost is not",
+          "claim": "The model frames itself as an expected/risk-adjusted return calculation.",
+          "reality": "Revenue is multiplied by LOA (cad/cost_benefit.py:87) but remaining cost is the full deterministic forward path with no probability weighting (cad/cost_benefit.py:80-81). A proper expected-value/rNPV weights later-phase costs by the probability of reaching them; here costs are neither probability-weighted nor discounted, so cost and benefit are risk-adjusted on inconsistent bases, biasing the BCR.",
+          "evidence": "cad/cost_benefit.py:80-81, 87",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "Wong et al. 2019 cited for per-phase cost it does not provide",
+          "claim": "'Per-phase out-of-pocket cost & duration: Wong, Siah & Lo (2019) and DiMasi et al. (2016)' (cad/cost_benefit.py:19-20); sources line repeats 'Wong et al. 2019' (cad/cost_benefit.py:121).",
+          "reality": "The per-phase out-of-pocket cost numbers (25/60/255) trace to DiMasi 2016, not Wong et al. 2019, whose contribution is success-rate and duration estimation. Wong's headline Phase I PoS (~13.8%, 2000-2015) also differs from the BIO 7.9% actually used (cad/cost_benefit.py:38), so Wong is cited but its numbers are not the ones encoded.",
+          "evidence": "cad/cost_benefit.py:18-20, 38, 47-49, 121",
+          "specMismatch": true,
+          "severity": "medium"
+        },
+        {
+          "title": "Verdict reads as a target/program-specific prediction but is a pure modality x phase benchmark",
+          "claim": "Header calls it a per-proposal 'feasibility verdict' / 'probability of regulatory approval' for a proposed therapeutic system (cad/cost_benefit.py:1-10), and the verdict string asserts a program-level conclusion (cad/cost_benefit.py:92-99).",
+          "reality": "probability_of_approval is just LOA_FROM_PHASE[phase] x oncology factor (cad/cost_benefit.py:76); the verdict adds only user-entered market inputs. No biology, target, or molecule enters the calculation, so every program at the same phase/modality/oncology flag gets the same approval probability and the same verdict \u2014 it is a benchmark, not a prediction, despite per-proposal presentation.",
+          "evidence": "cad/cost_benefit.py:1-10, 76, 92-99",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "Verdict BCR thresholds have no cited or derived basis",
+          "claim": "BCR >= 5 'Strongly favorable', >=1.5 'Favorable', >=0.8 'Marginal', else 'Unfavorable' (cad/cost_benefit.py:92-99).",
+          "reality": "These cutoffs are arbitrary round numbers with no source or sensitivity analysis; combined with the undiscounted, profit-vs-cost BCR they determine the headline go/no-go label, giving false precision to an unvalidated boundary.",
+          "evidence": "cad/cost_benefit.py:92-99",
+          "specMismatch": false,
+          "severity": "low"
+        },
+        {
+          "title": "Drug-likeness score double-counts Lipinski space (QED + Ro5)",
+          "claim": "drug_likeness_score = 0.6*QED + 0.4*Ro5-compliance, described as 'QED + Lipinski Ro5 compliance' (cad/virtual_triage.py:233-239).",
+          "reality": "QED (Bickerton et al.) already folds MW, ALOGP, HBD, HBA, PSA, rotatable bonds, aromatic rings and structural alerts into its desirability \u2014 it heavily overlaps the same Lipinski properties the separate 0.4*Ro5 term re-penalizes, so molecular-weight/logP/H-bond space is counted twice. The 0.34-per-violation penalty (cad/virtual_triage.py:238) and the pChEMBL/11 cap (cad/virtual_triage.py:244) are also arbitrary. The code does label the whole score non-validated (cad/virtual_triage.py:228-232).",
+          "evidence": "cad/virtual_triage.py:233-248",
+          "specMismatch": false,
+          "severity": "medium"
+        }
+      ],
+      "usefulnessAssessment": "Useful today only as a transparent, editable order-of-magnitude planning calculator for a portfolio/BD analyst who already understands rNPV and treats the output as a sanity-check sketch. It correctly reproduces published BIO phase success rates and DiMasi phase costs, so it can ballpark 'is this program in the right zip code.' It would mislead anyone who reads probability_of_approval as a forecast for their specific target or molecule (it is identical for all programs at a given phase/modality), who treats the BCR as a valuation (no discounting, profit mislabeled as revenue, cost not risk-weighted), or who trusts the preclinical 6% and the favorable/unfavorable thresholds as sourced (they are invented). It is not usable by oncologists or for any clinical decision, and med-chemists should note the triage drug-likeness score double-weights Lipinski properties. The honest in-code disclaimers help, but the single 'sources' line on the output blends sourced and invented numbers without distinction.",
+      "readmeNotes": "Any public limitations section should state plainly: (1) Only the clinical-phase LOAs (Phase I/II/III/Filed, cost_benefit.py:38-41) and clinical-phase costs (cost_benefit.py:47-49) come from the cited BIO and DiMasi sources; the preclinical approval rate, 'filed' cost, durations, modality multipliers, oncology factor, gross margin, and all verdict thresholds are unsourced heuristics. The 'sources: BIO/Informa CDSR 2011-2020; Wong et al. 2019; DiMasi et al. 2016' string (cost_benefit.py:121) should not be presented as covering the whole assumption block. (2) probability_of_approval is a modality/phase benchmark identical for every program at that phase \u2014 it is NOT a target- or molecule-specific prediction; the word 'verdict' overclaims. (3) The benefit/cost ratio is undiscounted (no NPV over a ~9.5-year horizon), risk-weights revenue but not cost, and the 'risk-adjusted revenue' field is actually gross profit (x0.80 margin) \u2014 so the ratio is not a valuation. (4) The triage drug-likeness score combines QED and Ro5, which overlap, so Lipinski properties are partly double-counted; weights are non-validated (already disclosed at virtual_triage.py:228-232). Avoid any phrasing like 'predicts approval probability' or 'expected return' without the benchmark/heuristic caveat."
+    },
+    {
+      "area": "Core CADD pipeline (cad/run_pipeline.py, target_report.py, virtual_triage.py, binding_site.py, fetch_structure.py)",
+      "summary": "The pipeline is genuinely wired to live public APIs (ChEMBL, UniProt, RCSB, AlphaFold) and computes real things from real data \u2014 it is not a template generator, and it is unusually honest about its heuristics (scoring weights are explicitly flagged as non-validated). But the scientific core has several real CADD correctness problems. The docking box is the bounding envelope of whatever hetero group has the most atoms in a single PDB \u2014 not necessarily the co-crystal inhibitor \u2014 and its center (mean of atoms) and size (min/max extent) are computed inconsistently. The three resolution paths (ChEMBL target, UniProt entry, best PDB) are independent fuzzy lookups that can land on different proteins, and only virtual_triage does exact gene-symbol disambiguation; target_report and fetch_structure do not. The \"potent activities\" count applies no potency floor, and the ligand triage scans only an arbitrary, unordered first slice of ChEMBL activities while pooling IC50/Ki/Kd/EC50 and keeping the single most favorable value per molecule. Useful as cited research orientation; misleading if read as a validated potency/druggability ranking.",
+      "whatIsReal": [
+        "Live, keyless data pulls from real public APIs with correct endpoints: ChEMBL activity/molecule/mechanism/target_search (virtual_triage.py:43, target_report.py:32), UniProt search with reviewed+human+gene/protein filters (target_report.py:79, fetch_structure.py:55), RCSB file download and AlphaFold API version resolution (fetch_structure.py:32-34, 76-95).",
+        "Real PDB ATOM/HETATM column parsing by fixed-width offsets for ligand coordinates (binding_site.py:57-76) \u2014 genuine geometry from the actual structure file, not a placeholder.",
+        "pChEMBL is correctly described as -log10(molar potency) and used as the potency axis (virtual_triage.py:8, 367); RDKit ECFP4/Morgan r=2 Tanimoto similarity is a real, standard fingerprint when RDKit is present (virtual_triage.py:251-266).",
+        "virtual_triage.resolve_target does real exact gene-symbol disambiguation to avoid ChEMBL text-relevance picking an interactor/substring (e.g. AKT1 vs AKT1S1, AURKA vs AURKAIP1) (virtual_triage.py:81-101) \u2014 a genuine, well-reasoned correctness guard.",
+        "AlphaFold model version is resolved live rather than hardcoded, with newest-first fallback (fetch_structure.py:76-95).",
+        "The scoring weights are explicitly and prominently labeled as a transparent non-validated heuristic, not fetched data (virtual_triage.py:228-232), and SUMMARY.md flags cost-benefit as target-independent (run_pipeline.py:241-243).",
+        "Pipeline refuses to emit a feasibility verdict when the target cannot be resolved, rather than fabricating one (run_pipeline.py:74-93)."
+      ],
+      "whatIsStubOrWrapper": [
+        "RDKit-dependent steps (similarity, PAINS/Brenk liabilities, SDF, extra descriptors) only run if RDKit is installed; otherwise silently skipped with a SUMMARY note (run_pipeline.py:101-109, 224-226; virtual_triage.py:47-54, 292-298).",
+        "Docking itself is not run \u2014 stage 6 (cad/dock.py / AutoDock Vina) is only a printed command string; the pipeline never validates the box against a real dock (run_pipeline.py:250-256, binding_site.py:105-107).",
+        "cost_benefit P(approval) and benefit/cost are target-independent constants from a fixed BIO/Informa prior, not computed from this target (run_pipeline.py:159-164); provenance source_url is called with entry=None (run_pipeline.py:161).",
+        "Box ligand selection has no relevance model \u2014 it is purely max-atom-count over hetero groups not in a hand-curated IGNORE set (binding_site.py:31-35, 74)."
+      ],
+      "inaccuracies": [
+        {
+          "title": "Docking box ligand is the largest hetero group, not necessarily the co-crystal inhibitor",
+          "claim": "README and provenance call it the 'docking box from the co-crystal ligand' / 'geometric envelope of the co-crystal ligand' (run_pipeline.py:10, 156-157; README.md:118).",
+          "reality": "largest_ligand picks the single hetero residue with the most atoms (binding_site.py:74 `key = max(groups, key=lambda k: len(groups[k]))`). The IGNORE set (binding_site.py:31-35) covers water/ions/common cryo-additives but NOT glycans (NAG/MAN/BMA/FUC), lipids/detergents, peptides, nucleotides, or covalent cofactors (HEME/FAD/NAD). On a glycosylated or cofactor-bound structure the box can center on a sugar tree or cofactor, not the inhibitor pocket. There is also no check that this ligand corresponds to the pocket where the triaged hits would bind.",
+          "evidence": "binding_site.py:31-35, 53-76; run_pipeline.py:156-157",
+          "specMismatch": true,
+          "severity": "high"
+        },
+        {
+          "title": "Box center (mean of atoms) and box size (min/max extent) are computed on inconsistent bases",
+          "claim": "A center+size that encloses the ligand for AutoDock Vina (binding_site.py:8-9, 79-83).",
+          "reality": "center = arithmetic mean of atom coordinates (binding_site.py:81) while size = (max-min)+2*pad (binding_site.py:82). Vina interprets the box as center +/- size/2, i.e. center should be the bounding-box midpoint (max+min)/2, not the atom mean. When ligand atoms are unevenly distributed the mean is offset from the geometric center, so the box is not symmetric about the true extent; for ligands spanning >16 Angstrom on an axis the 8 Angstrom pad can fail to compensate and the box can clip the ligand. Center and size describe different reference points.",
+          "evidence": "binding_site.py:79-83",
+          "specMismatch": true,
+          "severity": "medium"
+        },
+        {
+          "title": "8 Angstrom per-side padding (16 Angstrom added per axis) is a hardcoded constant, large for focused re-docking",
+          "claim": "'ligand envelope + 8 Angstrom padding' as a sensible Vina box (binding_site.py:122).",
+          "reality": "pad=8.0 is a fixed default (binding_site.py:79); the box adds 16 Angstrom to each axis on top of the full ligand extent. For a typical ~10 Angstrom small molecule this yields ~26 Angstrom boxes. Vina guidance favors tighter boxes for redocking (oversized boxes degrade search accuracy/exhaustiveness). The pad is a constant, not derived from pocket geometry or any pocket-detection (fpocket/P2Rank) the docstrings mention.",
+          "evidence": "binding_site.py:79, 122",
+          "specMismatch": false,
+          "severity": "low"
+        },
+        {
+          "title": "'Potent activities' count applies no potency threshold",
+          "claim": "Docstring: 'how many potent measured ligands exist' (target_report.py:11-12); README: 'EGFR: ChEMBL potent activities = 21342' (README.md:54); SUMMARY: 'Potent ChEMBL activities' (run_pipeline.py:179); provenance key 'chembl_potent_activity_records' (run_pipeline.py:143).",
+          "reality": "The query only requires pchembl_value to be non-null, with NO pchembl floor (target_report.py:61 `pchembl_value__isnull: false`). It counts every activity with any pChEMBL value, including very weak ones (pChEMBL 2 = 10 mM). It also counts activity RECORDS, not distinct ligands (a single compound contributes many records), contradicting 'how many potent measured ligands exist'. The word 'potent' is unjustified.",
+          "evidence": "target_report.py:59-62, 11-12; run_pipeline.py:143, 179; README.md:54",
+          "specMismatch": true,
+          "severity": "high"
+        },
+        {
+          "title": "Ligand triage scans an arbitrary unordered slice of ChEMBL, then calls it 'the most potent'",
+          "claim": "'Pulls the experimentally measured potent ligands' and 'Take the most potent molecules' / ranked best candidates (virtual_triage.py:6-7, 286-288; run_pipeline.py:151 'ChEMBL bioactivities ranked by a transparent potency+drug-likeness score').",
+          "reality": "fetch_actives issues the activity query with NO order_by (virtual_triage.py:123-131), so ChEMBL returns its default order (activity_id ascending). It scans only the first `scan` (default 4000) records (virtual_triage.py:117, 382) and a wall-clock budget can cut it shorter (virtual_triage.py:116-121). For high-data targets (EGFR has >>4000 activities) the 'top' molecules are the best of an arbitrary early slice, not the globally most potent. Results are also non-deterministic under API slowness.",
+          "evidence": "virtual_triage.py:104-155, 286-288, 382",
+          "specMismatch": true,
+          "severity": "high"
+        },
+        {
+          "title": "Potency conflates assay types/relations and keeps the single most favorable value per molecule",
+          "claim": "'IC50 / Ki / Kd / EC50, expressed as pChEMBL' treated as one comparable potency (virtual_triage.py:8, 45).",
+          "reality": "POTENCY_TYPES pools IC50 (assay-condition-dependent), Ki, Kd, and EC50 (cellular) into one axis (virtual_triage.py:45, 139), and per molecule keeps the MAXIMUM pChEMBL across all of them (virtual_triage.py:147-149) \u2014 cherry-picking the most potent assay, an optimistic bias. No filter on standard_relation (censored '>' values pass), assay_type (B vs F), data_validity_comment, or target/assay confidence. best_pchembl is a single best measurement, not an aggregate.",
+          "evidence": "virtual_triage.py:45, 135-149",
+          "specMismatch": true,
+          "severity": "medium"
+        },
+        {
+          "title": "Target resolution differs between stages; the three lookups can describe different proteins",
+          "claim": "A single coherent dossier+triage+structure for one target (run_pipeline.py manifest ties uniprot_accession, pdb_count, chembl activity, and docking box together as one target, run_pipeline.py:132-165).",
+          "reality": "target_report.resolve_target sorts only by (SINGLE PROTEIN, Homo sapiens) booleans with NO exact gene-symbol guard (target_report.py:48-56), unlike virtual_triage which does (virtual_triage.py:81-101) \u2014 so the dossier and the triaged ligands can resolve to DIFFERENT ChEMBL targets for the same input. Separately, uniprot_summary (target_report.py:78-81) and fetch_structure.resolve_uniprot (fetch_structure.py:53-56) take the first (size:1) gene-OR-protein_name match with no cross-check that the UniProt accession equals the ChEMBL target's protein. pdb_count, activity count, and the docking-box PDB can therefore belong to different proteins while being reported as one.",
+          "evidence": "target_report.py:48-56, 78-82; fetch_structure.py:53-57; virtual_triage.py:81-101; run_pipeline.py:132-165",
+          "specMismatch": true,
+          "severity": "high"
+        },
+        {
+          "title": "Best-PDB selection optimizes resolution, ignoring whether a ligand is present (holo vs apo)",
+          "claim": "Pipeline produces a docking box whenever an experimental PDB exists (run_pipeline.py:114-120).",
+          "reality": "pick_best_pdb returns the lowest-resolution X-ray/EM entry (fetch_structure.py:98-105), which is frequently an apo structure. binding_site then reports 'no non-solvent ligand found (apo structure?)' and the box is silently skipped (binding_site.py:99-103), even when a holo structure of the same target exists. There is no search for a ligand-bound structure.",
+          "evidence": "fetch_structure.py:98-105; binding_site.py:99-103; run_pipeline.py:114-122",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "'docking feasible: yes' inferred from mere existence of any PDB",
+          "claim": "Dossier prints 'docking feasible: yes' when pdb_count>0 (target_report.py:174-176; run_pipeline.py:175).",
+          "reality": "pdb_count counts all UniProt PDB cross-references including apo, NMR, fragment, and partial-domain/complex structures (target_report.py:93, 99). Presence of any PDB does not establish that a dockable pocket structure exists. Overclaims docking feasibility.",
+          "evidence": "target_report.py:93-101, 174-176",
+          "specMismatch": false,
+          "severity": "low"
+        },
+        {
+          "title": "Composite/drug-likeness score constants look like meaningful quantities",
+          "claim": "A 'score' column ranking candidates (virtual_triage.py:242-248, CSV/table output).",
+          "reality": "potency is normalized by hardcoded constants min(pchembl,11)/11 (virtual_triage.py:244) and combined with weights 0.6/0.4 (or 0.45/0.3/0.25) and a 0.34-per-Ro5-violation penalty (virtual_triage.py:238, 247-248). These are arbitrary design constants, not fitted or validated. This is explicitly disclaimed in code (virtual_triage.py:228-232), so it is honest, but the numeric 'score' can still be read as predictive.",
+          "evidence": "virtual_triage.py:228-248",
+          "specMismatch": false,
+          "severity": "low"
+        }
+      ],
+      "usefulnessAssessment": "For a researcher or med-chemist this is a legitimate, cited starting point: it pulls real ChEMBL ligands with SMILES and links, real UniProt/PDB metadata, and a real structure file, all keyless and reproducible. It is NOT safe to read as a validated ranking. A med-chemist would be misled by (a) 'potent activities = N' which has no potency floor and counts records not compounds; (b) the 'top candidates' which are best-of-an-arbitrary-4000-record slice (no order_by) with the single most favorable IC50/Ki/Kd/EC50 kept per molecule; and (c) the docking box, which can be built on a glycan/cofactor/peptide rather than the inhibitor and whose center/size are geometrically inconsistent \u2014 feeding it straight into Vina (as SUMMARY.md instructs) could dock into the wrong region or clip the pocket. The cross-stage resolution mismatch means the dossier, the ligands, and the structure are not guaranteed to be the same protein. No oncologist/clinical use; it is explicitly research orientation and should stay there.",
+      "readmeNotes": "README.md:118 'Docking box computed from the co-crystal ligand envelope' should be softened to 'largest non-solvent hetero ligand (may not be the inhibitor; verify pocket)'. README.md:54 'ChEMBL potent activities = 21342' is inaccurate \u2014 there is no potency threshold (only pchembl non-null) and it counts activity records, not potent ligands; rename to 'ChEMBL activities with a pChEMBL value'. README.md:157/191 imply the docking box is reliable for the intended pocket; add the caveat that the box derives from whichever PDB has best resolution (often apo) and from max-atom-count ligand selection, and that the box ligand is unrelated to the triaged hits. A 'Known limitations' doc should also state: target/UniProt/PDB are resolved by three independent fuzzy lookups that can disagree; ligand scan is an unordered first-N slice (not globally most potent); IC50/Ki/Kd/EC50 are pooled and the most favorable value per molecule is kept; the composite 'score' is an unvalidated heuristic of arbitrary constants."
+    },
+    {
+      "area": "Verification & provenance system (cad/verify.py, cad/provenance.py, cad/test_provenance.py)",
+      "summary": "The verification spine is real and better than typical \"trust me\" provenance: verify.py genuinely re-fetches ChEMBL/UniProt counts, does an independent raw-HTTP SMILES byte-equality pull, and deterministically recomputes cost_benefit, the docking box, PAINS/Brenk/SA liabilities, and the triage score, failing CI on mismatch. But the marketing (\"every figure re-pulled from source\", \"fabrication impossible to hide\", \"independently re-verifiable\") overstates it in five concrete ways: (1) most numeric columns in hits.csv (pChEMBL potency, QED, Ro5, MW, alogp, similarity) are NEVER re-fetched \u2014 the score recompute reads them straight from the same row it is checking, so an internally-consistent fabrication passes; (2) DRIFT silently blesses any count change up to max(2, 10%) and still prints \"No fabrications\"; (3) the SMILES check only proves the SMILES matches the chembl_id in the row, not that the molecule is actually a target hit, so a real-but-wrong compound passes; (4) wrong-but-reproducible queries pass by design, and \"potent_activity_records\" is itself a mislabeled query; (5) provenance.py's \"model origin impossible\" is just a string-enum check on a label \u2014 it never verifies the value actually came from the source, and verify.py never even reads provenance.json. So the system proves reproducibility/non-tampering of a subset of figures, not correctness, and not freedom from model influence.",
+      "whatIsReal": [
+        "Independent SMILES identity check genuinely uses a separate code path: verify.py:56-72 does raw urllib GET against the ChEMBL molecule endpoint, distinct from virtual_triage.py:163's batched fetch_molecule_properties, and requires byte-equality (verify.py:167).",
+        "Deterministic cost_benefit recompute really catches tampering of the model OUTPUTS \u2014 test_provenance.py:52-63 proves a +99 edit to benefit_cost_ratio FAILs (verify.py:227-234).",
+        "Docking box is re-derived from the live PDB co-crystal ligand envelope and must match exactly (verify.py:259-267), a true recompute from source not a self-comparison.",
+        "PAINS/Brenk/GSK/Pfizer/SA liabilities are recomputed from saved SMILES via RDKit and must reproduce (verify.py:289-319).",
+        "Count checks re-issue the documented ChEMBL/UniProt queries through the stage modules (verify.py:108-132) and print an openable verify URL per figure (verify.py:403-404).",
+        "The empty-run guard is real: a run with no dossier/hits cannot earn the green banner and FAILs (verify.py:380-383, 408-411).",
+        "provenance.Figure rejects origin literals other than 'fetched'/'computed' (provenance.py:93-98), and test_provenance.py:24-30 enforces it.",
+        "The docstrings are unusually honest about scope, explicitly disclaiming prose, intel digests, and 'a wrong-but-stable query would pass' (verify.py:15-28)."
+      ],
+      "whatIsStubOrWrapper": [
+        "The triage score recompute is self-referential: verify.py:192-198 reads best_pchembl, qed, ro5_violations, and similarity from the SAME CSV row being verified, then feeds them to composite_score. It only catches editing the score column ALONE; none of those input numbers is ever re-fetched from ChEMBL.",
+        "similarity (Tanimoto) is never recomputed or re-derived \u2014 it is taken at face value from the CSV (verify.py:194) and also requires the original --query SMILES, which verify never has.",
+        "Per-row potency/property columns (best_pchembl, qed, ro5, mw, alogp, hba, hbd, tpsa) are NOT re-verified against ChEMBL at all; only the molecule's canonical_smiles is re-pulled.",
+        "cost_benefit verification recomputes ONLY from the saved assumptions block (verify.py:214-221) \u2014 the assumptions themselves (incidence, price, penetration, years) are unverified inputs and the phase-success priors inside cost_benefit.py are hardcoded, not fetched from the cited DOI.",
+        "provenance.json is write-only/decorative: verify.py never reads it (run() at verify.py:343-383 reads dossier/hits/liabilities/binding_site/cost_benefit, never provenance.json), so nothing cross-checks artifact figures against the manifest or the manifest's origin labels.",
+        "Manifest.computed sets verify_url to a formula filename like 'cad/virtual_triage.py:composite_score' (provenance.py:113), not an openable re-verification URL, yet the test only asserts it is truthy (test_provenance.py:41).",
+        "RDKit-absent and network-failure paths SKIP rather than FAIL: liabilities (verify.py:279-282), binding box on any fetch exception (verify.py:252-253), SMILES 'unresolved' rows silently skipped unless ALL fail (verify.py:177-178) \u2014 a mostly-SKIP run still avoids the FAIL banner.",
+        "Coverage caps: verify_hits checks only the first 5 rows (max_rows=5, verify.py:142) and liabilities only the first 25 (verify.py:270); rows beyond the cap are never verified."
+      ],
+      "inaccuracies": [
+        {
+          "title": "\"Re-pulls every figure from its live source\" \u2014 most hits.csv figures are not re-pulled",
+          "claim": "README:35/135 and verify.py:5-7 state it re-pulls EVERY reported figure from its live public source.",
+          "reality": "Only ChEMBL/UniProt counts and each ligand's canonical SMILES are re-fetched. The potency (best_pchembl), QED, Ro5, MW, alogp, HBA/HBD, TPSA and similarity columns in hits.csv are read from the file and never re-fetched; the score 'recompute' consumes those unverified row values as its inputs (verify.py:192-198).",
+          "evidence": "verify.py:5-7, README.md:35; vs verify.py:192-198",
+          "specMismatch": false,
+          "severity": "high"
+        },
+        {
+          "title": "Self-consistent fabrication of potency passes the score check",
+          "claim": "Deterministic recompute means \"any drift means the score column was edited\" / fabrication impossible to hide (verify.py:182-184, README:7).",
+          "reality": "composite_score is recomputed from best_pchembl/qed/ro5/similarity taken from the same row. Editing best_pchembl AND score together (or fabricating a whole row consistently) reproduces and PASSES \u2014 only an isolated edit of the score column is caught.",
+          "evidence": "verify.py:189-205, virtual_triage.py:242-248",
+          "specMismatch": false,
+          "severity": "high"
+        },
+        {
+          "title": "DRIFT silently blesses changed numbers and is reported as \"No fabrications\"",
+          "claim": "Marketing: fabrication impossible to hide; figures are re-verifiable.",
+          "reality": "_count_status returns DRIFT (non-failing, exit 0) for any change within max(2, 10%) and the banner prints \"\u2705 No fabrications. N figure(s) DRIFTed\". A fabricator nudging a count by up to 10% (or 2 absolute) is reported as no-fabrication; direction (a count going DOWN) is ignored.",
+          "evidence": "verify.py:77-86, 412-413",
+          "specMismatch": false,
+          "severity": "high"
+        },
+        {
+          "title": "SMILES byte-equal proves ID\u2194SMILES consistency, not that the molecule is a target hit",
+          "claim": "README:35/144-145: byte-equal to ChEMBL catches an edited/fabricated ligand; \"fabrication impossible to hide.\"",
+          "reality": "The check fetches canonical_smiles for the chembl_id IN THE ROW and compares (verify.py:164-167). Any real ChEMBL compound + its real SMILES passes regardless of whether it is actually a potent ligand of the target. It cannot detect a wrong-but-real molecule inserted into hits.csv.",
+          "evidence": "verify.py:155-180",
+          "specMismatch": false,
+          "severity": "high"
+        },
+        {
+          "title": "\"byte-equal to ChEMBL\" reads the same canonical_smiles field the pipeline read \u2014 not a fully orthogonal source",
+          "claim": "README:35 / verify.py:20-22 frame the SMILES check as genuinely independent.",
+          "reality": "The HTTP path is separate, but both verify (_chembl_canonical_smiles, verify.py:68-72) and the pipeline (virtual_triage.py:167-178) read the identical molecule_structures.canonical_smiles field from ChEMBL. It verifies the file faithfully copied that field; it is not an independent measurement of the molecule.",
+          "evidence": "verify.py:68-72 vs virtual_triage.py:167-178",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "\"potent_activity_records\" counts any pchembl-non-null activity, regardless of potency or assay type",
+          "claim": "The figure is labeled/reported as POTENT activity records (target_report.py:75, manifest 'chembl_potent_activity_records').",
+          "reality": "chembl_snapshot counts every activity with pchembl_value not null (target_report.py:61) \u2014 no min pChEMBL, no standard_type/POTENCY_TYPES filter, no assay-confidence filter. This includes weak (e.g. pChEMBL ~1) and non-binding functional records. The verifier re-runs the same query so it reproduces, giving false confidence in a mislabeled number. (verify.py:16-19 admits 'a wrong-but-stable query would pass.')",
+          "evidence": "target_report.py:59-62, virtual_triage.py:126-149, verify.py:16-19",
+          "specMismatch": true,
+          "severity": "medium"
+        },
+        {
+          "title": "provenance.py does NOT make a model origin impossible \u2014 it only checks a label string",
+          "claim": "README:34: \"The code cannot record a value whose origin is 'model' \u2014 it raises.\" Core rule: no figure originates from a model.",
+          "reality": "Figure.__post_init__ only checks the origin STRING equals 'fetched'/'computed' (provenance.py:93-98). value is typed `object` and is never tied to the source; any code can call manifest.fetched('x', <model_produced_value>, 'chembl', plausible_url) and it is accepted. The invariant blocks only the literal honesty of writing origin='model'.",
+          "evidence": "provenance.py:83-98, 108-113",
+          "specMismatch": false,
+          "severity": "high"
+        },
+        {
+          "title": "Manifest is never verified against the artifacts it describes",
+          "claim": "README:34/120: provenance.json tags every reported figure with origin+source+verify URL as the anti-hallucination guarantee.",
+          "reality": "verify.py never opens provenance.json (run() at verify.py:343-383). Nothing checks that the figures/origins in the manifest match dossier.json/hits.csv, so the manifest could disagree with the artifacts and verify would still print a green banner.",
+          "evidence": "verify.py:343-383; provenance.json written at run_pipeline.py:165 but absent from verify's reads",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "cost-benefit \"reproduces exactly\" only validates internal consistency, not the assumptions or priors",
+          "claim": "verify.py:235-237 prints \"all figures reproduce exactly from stated assumptions\"; README markets fully-cited figures.",
+          "reality": "verify_cost_benefit recomputes from the saved assumptions block (verify.py:214-221); the assumptions (incidence/price/penetration/years) are unverified inputs and the per-phase success priors are hardcoded in cost_benefit.py, not fetched from the cited DOI. Fabricated assumptions producing a self-consistent verdict PASS.",
+          "evidence": "verify.py:210-237, run_pipeline.py:159-162",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "SKIP/unresolved paths convert un-checkable figures into a non-FAIL",
+          "claim": "\"No result is better than a fabricated one\"; non-zero exit gates CI.",
+          "reality": "RDKit-absent liabilities (verify.py:279-282), any binding-box fetch error (verify.py:252-253), and partially-unresolvable SMILES (verify.py:177-178) all SKIP. Only ALL-rows-unresolved FAILs. An attacker who can make verify's network fetch fail (or simply lacks RDKit) downgrades real checks to SKIP and still avoids the FAIL banner.",
+          "evidence": "verify.py:173-178, 252-253, 279-282",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "Only the first 5 hits (and 25 liabilities) are verified",
+          "claim": "Implied: the published ranked ligands are verified.",
+          "reality": "verify_hits reads only the first 5 CSV rows (verify.py:147, max_rows=5) and liabilities only the first 25 (verify.py:270). Any fabricated row past the cap is never checked.",
+          "evidence": "verify.py:142-147, 270-290",
+          "specMismatch": false,
+          "severity": "low"
+        }
+      ],
+      "usefulnessAssessment": "For its actual target users \u2014 med-chemists and computational researchers using this as an OSINT triage front-end \u2014 the verifier is genuinely useful as a tamper-detector and reproducibility gate: it will catch hand-edited SMILES, a doctored score column, an edited cost_benefit verdict, or a fabricated docking box, and it forces an openable URL next to every count. That is more than most pipelines offer. Where it would mislead: a reader who believes the README's \"every figure re-pulled\" / \"fabrication impossible to hide\" will over-trust the potency and drug-likeness numbers in hits.csv, which are taken on faith from the file (only SMILES and the derived score are checked, and the score is checked against those same unverified inputs). It would also mislead anyone treating a PASS as evidence the query is CORRECT \u2014 a mislabeled \"potent_activity_records\" count (no potency/assay filter) reproduces and passes. No clinician or patient should touch this, and the repo says so. Bottom line: this proves \"these specific figures were not altered after the run and re-derive from the documented query,\" NOT \"these figures are correct, well-defined, or model-free.\" The \"no value originates from a model\" guarantee is a labeling convention, not an enforced property.",
+      "readmeNotes": "Three lines overclaim relative to the code: README:7 \"make fabrication impossible to hide\" \u2014 false; DRIFT blesses \u00b110%/2 changes (verify.py:77-86,413), the score check is self-referential (verify.py:192-198), and rows past index 5/25 are unchecked. README:35 and README:135 \"Re-pulls every figure from its live source\" \u2014 only counts and SMILES are re-pulled; potency/QED/Ro5/MW/alogp/similarity are read from the file, not re-fetched. README:34 \"The code cannot record a value whose origin is 'model' \u2014 it raises\" \u2014 it only rejects the literal string 'model' on a label (provenance.py:93-98); a model-produced number passed to manifest.fetched(...) is accepted, and verify.py never reads provenance.json to cross-check. Suggested caveats: (a) state that verify proves non-tampering + reproducibility of a SUBSET of figures, not correctness; (b) note hits.csv property/potency columns and similarity are NOT independently re-fetched; (c) clarify DRIFT is a non-failing tolerance band and explain why \"No fabrications\" is printed for it; (d) rename or footnote \"potent_activity_records\" since the query applies no potency/assay filter; (e) drop or soften \"fabrication impossible to hide\" to \"tampering with covered figures is detectable.\" docs/ANTI-HALLUCINATION.md (referenced at README:216) should carry the explicit threat model."
+    },
+    {
+      "area": "Cheminformatics layer (cad/cheminformatics.py, precompute_site_data.py, web/public/data/cheminformatics/*.json)",
+      "summary": "The cheminformatics layer is genuinely real, not a fake. It is a thin, faithful wrapper over RDKit: PAINS/Brenk use the real FilterCatalog, QED is RDKit's real Bickerton QED, descriptors (MW, MolLogP, TPSA, HBD/HBA, rotatable bonds, aromatic rings, FractionCSP3, Murcko scaffold) are real RDKit calls, ECFP4 Tanimoto and Butina clustering are real, and SA score is the real Ertl/Schuffenhauer sascorer imported from RDKit's Contrib tree (verified: aspirin SA=1.58, QED=0.550, PAINS descriptions like 'quinone_A(370)'/'catechol_A(92)' are genuine RDKit catalog strings). The drug-likeness rule sets (Ro5, Veber, Egan, GSK 4/400, Pfizer 3/75, LE, LLE) are implemented to commonly-cited spec with minor simplifications. The main fidelity caveats are: (a) 'clean' silently ignores Brenk alerts; (b) the Egan rule is a rectangular approximation of an ellipsoidal model; (c) the committed JSON is a live-ChEMBL snapshot (2026-06-23) whose compound set is not reproducible, and the precompute script's deliberate 'never shrink' guards can leave stale per-target files in place while index.json's date advances. The SA scorer degrades honestly to None/omitted field when Contrib is absent.",
+      "whatIsReal": [
+        "PAINS and Brenk alerts use RDKit's real FilterCatalog (cheminformatics.py:61-70): FilterCatalogParams + AddCatalog(P.PAINS)/(P.BRENK). Verified against live RDKit 2026.03.2 \u2014 returns genuine catalog descriptions 'quinone_A(370)', 'catechol_A(92)' (PAINS) and 'chinone_1','catechol','imine_1','oxime_1' (Brenk), which match the committed JSON (e.g. BRAF.json brenk:['imine_1','oxime_1','Oxygen-nitrogen_single_bond']).",
+        "QED is the real RDKit QED.qed (cheminformatics.py:85) \u2014 verified aspirin qed=0.55 exactly matches direct QED.qed=0.5501. Not a homemade approximation.",
+        "Synthetic-accessibility is the real Ertl & Schuffenhauer 2009 sascorer imported from RDKit Contrib SA_Score (cheminformatics.py:46-56, 100). fpscores.pkl.gz is present in the pip rdkit wheel used by CI; verified aspirin SA=1.58 (sane low value).",
+        "All physicochemical descriptors are real RDKit: Descriptors.MolWt, Crippen.MolLogP, CalcTPSA, CalcNumHBD/HBA, CalcNumRotatableBonds, CalcNumAromaticRings, CalcFractionCSP3, MurckoScaffoldSmiles (cheminformatics.py:77-99).",
+        "Lipinski Ro5 implemented to spec: counts MW>500, logP>5, HBD>5, HBA>10, passes if <=1 violation (cheminformatics.py:89-90).",
+        "GSK 4/400 (MW<=400 and logP<=4) and Pfizer 3/75 (logP>3 and TPSA<75) match the published Gleeson 2008 / Hughes 2008 definitions (cheminformatics.py:94-95); verified on aspirin (GSK ok, not tox) and decylbenzene (GSK fail, tox risk) in test_cheminformatics.py:54-62.",
+        "Ligand efficiency LE=1.37*pChEMBL/heavy_atoms (Hopkins 2004) and LLE=pChEMBL-cLogP (Leeson 2007) are correct and pinned by exact-value unit tests (test_cheminformatics.py:38-45).",
+        "ECFP4 Tanimoto (Morgan radius 2, 2048 bits) and Butina clustering at 0.35 distance cutoff are real RDKit (cheminformatics.py:122-164).",
+        "SA-scorer-absent path is honest: sa_score=None when Contrib missing (line 100), and the JSON field saScore is omitted (not null) rather than fabricated (precompute_site_data.py:111-112).",
+        "The committed *.json values are internally consistent with the live analyze() output (all 40 target files carry saScore, le, lle, scaffold, pains/brenk, gskOk, pfizerToxRisk, fractionCsp3 in the exact analyze() shape)."
+      ],
+      "whatIsStubOrWrapper": [
+        "SA score is entirely dependency-gated: if RDKit's Contrib SA_Score tree is not importable, _HAS_SASCORE=False and every sa_score is None (cheminformatics.py:46-56,100). The current pip rdkit wheel bundles it, but the CI workflow only runs 'pip install rdkit' (.github/workflows/cheminformatics-precompute.yml:31) \u2014 on any rdkit build without Contrib, all saScore fields would silently disappear from refreshed JSON.",
+        "The whole module is a wrapper with zero original chemistry \u2014 every signal is an RDKit call; there is no fpscores file or SMARTS shipped in this repo (correctly relying on RDKit's bundled data).",
+        "PAINS/Brenk hit LISTS are truncated to the first 5 (pains_hits[:5], brenk_hits[:5], cheminformatics.py:110-111) while the *_alerts COUNT is full \u2014 the JSON 'pains'/'brenk' arrays can under-represent the true alert set.",
+        "Per-target JSON files are only rewritten when live ChEMBL triage succeeds; on failure the target is skipped (precompute_site_data.py:88-89), leaving the previously committed file on disk unchanged (a wrapper around a flaky external data source, not a recomputation)."
+      ],
+      "inaccuracies": [
+        {
+          "title": "'clean' label ignores Brenk structural alerts",
+          "claim": "The 'clean' flag implies a compound passes structural-alert screening (module advertises 'structural-alert screening (PAINS, Brenk)').",
+          "reality": "clean = Ro5 and Veber and (PAINS==0) only; Brenk alerts are not part of the definition. 175 committed entries are labeled clean:true despite brenkAlerts>0 (e.g. ERBB2.json CHEMBL203644 brenkAlerts=1 clean=true; BRAF.json CHEMBL500659 brenkAlerts=3 clean=true).",
+          "evidence": "cheminformatics.py:113; web/public/data/cheminformatics/BRAF.json:11-26; ERBB2.json",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "Egan rule is a rectangular approximation of an ellipsoidal absorption model",
+          "claim": "egan_ok / eganOk represents the Egan 2000 absorption rule.",
+          "reality": "Egan & Merz 2000 defines a confidence ellipse in PSA vs AlogP98 space; the code uses a simple rectangle TPSA<=131.6 and MolLogP<=5.88. The 131.6/5.88 are the egg's axis bounds, and it substitutes RDKit MolLogP for AlogP98. Compounds near the corners are misclassified vs the true ellipse.",
+          "evidence": "cheminformatics.py:92",
+          "specMismatch": true,
+          "severity": "low"
+        },
+        {
+          "title": "Veber rule omits the HBD+HBA<=12 alternative clause",
+          "claim": "veber_ok represents the Veber 2002 oral-bioavailability rule.",
+          "reality": "Veber 2002 is rotatable bonds<=10 AND (TPSA<=140 OR H-bond count (HBD+HBA)<=12). The code implements only rotb<=10 and tpsa<=140, so molecules with TPSA>140 but low H-bond count are flagged fail when Veber would pass them. This is a common simplification but not the full spec.",
+          "evidence": "cheminformatics.py:91",
+          "specMismatch": true,
+          "severity": "low"
+        },
+        {
+          "title": "Committed JSON is a non-reproducible live-ChEMBL snapshot; precompute can serve stale per-target data while index date advances",
+          "claim": "index.json 'generated' date represents the freshness of the served cheminformatics set; weekly Action 'maintains' the set.",
+          "reality": "Per-target descriptors are deterministic, but the compound SET comes from a live virtual_triage.py ChEMBL query, so a re-run on a later date can return different molecules. When a target's triage fails, its old JSON file is left untouched (continue) and the index entry is preserved by the merge-by-slug 'never shrink' guard, yet index.json's top-level 'generated' is overwritten with the new run's stamp \u2014 so index.json can advertise a fresh date over stale per-target files.",
+          "evidence": "precompute_site_data.py:88-89, 130, 139-158",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "saScore would silently vanish on refresh in a Contrib-less RDKit, changing JSON schema",
+          "claim": "Committed files all carry saScore (Ertl SA), presented as a stable field.",
+          "reality": "saScore is conditionally added only if _HAS_SASCORE (precompute_site_data.py:111). A precompute run on an RDKit build lacking the Contrib SA_Score tree would drop saScore from every entry without error, producing inconsistent schema vs the currently committed files (which all include it).",
+          "evidence": "cheminformatics.py:46-56,100; precompute_site_data.py:109-112",
+          "specMismatch": false,
+          "severity": "low"
+        },
+        {
+          "title": "PAINS/Brenk arrays truncated to 5 while count is full",
+          "claim": "JSON 'pains'/'brenk' arrays list the structural alerts matched.",
+          "reality": "Only the first 5 matches are stored (pains_hits[:5]); painsAlerts/brenkAlerts hold the true count, so a compound with >5 alerts shows a list shorter than its count.",
+          "evidence": "cheminformatics.py:110-111; precompute_site_data.py:102-103",
+          "specMismatch": false,
+          "severity": "low"
+        }
+      ],
+      "usefulnessAssessment": "Med-chemists and cheminformatics researchers could legitimately use this today as a fast first-pass triage/filter: the PAINS/Brenk, QED, SA, descriptors, Ro5/Veber/Egan, GSK/Pfizer, LE/LLE and Butina clustering are all real RDKit and would reproduce in any standard RDKit environment. It is appropriate for hypothesis-generation, exactly as the module disclaims. Where it would mislead: (1) the 'clean' flag is a partial gate (Ro5+Veber+no-PAINS) that a user could mistake for 'passes all structural alerts' \u2014 175 served compounds are 'clean' yet carry Brenk alerts; (2) the served web JSON is a frozen 2026-06-23 ChEMBL snapshot, so anyone treating /explore numbers as current ChEMBL is wrong, and the never-shrink guards mean an individual target could be stale even while index.json shows a fresh date; (3) Egan/Veber are simplified forms. It is NOT a treatment tool and is correctly framed as research/triage. No oncologist or patient should derive anything clinical from it.",
+      "readmeNotes": "Claims that are accurate: 'real RDKit-based', 'structural-alert screening (PAINS, Brenk) via RDKit FilterCatalog', and the citations (Lipinski/Veber/Egan/Baell/Brenk/Bemis-Murcko/Bickerton QED/Ertl SAscore/Hopkins/Leeson/Gleeson/Hughes) all map to genuinely implemented, real calls. Needs caveats: (1) 'clean' should be documented as Ro5+Veber+no-PAINS only \u2014 it does NOT account for Brenk alerts, so 'clean' compounds can still carry Brenk fragments. (2) Egan and Veber are simplified rectangular/single-clause approximations, not the full published ellipse / (TPSA OR H-bond) forms. (3) SA score (saScore) is present only when RDKit's Contrib SA_Score is importable; describe it as optional and note it is omitted (not null) otherwise. (4) The web/public/data/cheminformatics/*.json are a dated live-ChEMBL snapshot (generated 2026-06-23), not live values; note the 'never shrink' merge guard means a target file can remain stale (and index.json's date can advance past stale per-target files) if a weekly triage fails. (5) PAINS/Brenk JSON arrays are truncated to 5 entries; the *_alerts count is authoritative."
+    },
+    {
+      "area": "Structure retrieval (cad/fetch_structure.py) & docking wrapper (cad/dock.py)",
+      "summary": "Both files are honest about scope and stdlib-only, and dock.py genuinely refuses to fabricate scores (it shells out to the real AutoDock Vina binary or prints install help). But the \"best experimental PDB\" selection is shallow: it ranks PDB cross-references only by crystallographic method and resolution, completely ignoring sequence coverage, which domain is resolved, apo-vs-holo, and whether the structure is a mutant \u2014 so it can confidently download a low-resolution-but-correct\u2026 or a high-resolution structure that covers the wrong domain, is a point mutant, or has no ligand. The AlphaFold fallback never reads or surfaces real pLDDT confidence (it only prints a static \"validate pLDDT\" string), always grabs only the F1 fragment, and the gene\u2192UniProt resolver takes the single top relevance hit, any of which can silently hand off an unsuitable or wrong-region structure. dock.py does not invent results, and run_pipeline only presents a docking box + a \"next step: dock\" command (not fake affinities) \u2014 but it labels docking \"feasible: yes\" purely on PDB count, and its blind-box fallback uses a `--autobox` flag that stock AutoDock Vina does not support.",
+      "whatIsReal": [
+        "dock.py is a genuine wrapper, not a simulator: if `vina`/`obabel` are absent it prints INSTALL_HELP and returns 3 without producing any score (cad/dock.py:144-146, 59-70), and scores are only ever parsed from real Vina output files (cad/dock.py:120-129).",
+        "Receptor prep really strips HETATM/water to avoid docking against the co-crystal ligand (clean_receptor_pdb, cad/dock.py:77-88) and converts to PDBQT via Open Babel at pH 7.4 (cad/dock.py:91-100).",
+        "fetch_structure resolver constrains the target search to reviewed human entries (organism_id:9606 AND reviewed:true), reducing wrong-organism hits for the --target path (cad/fetch_structure.py:55).",
+        "AlphaFold URL is resolved live via the prediction API with a HEAD-probe fallback across model versions, avoiding hardcoded version 404s (cad/fetch_structure.py:76-95).",
+        "run_pipeline presents only a docking *box* and a ready-to-run command as the next step, not fabricated docking results (cad/run_pipeline.py:230-256), and dock.py output is hedged as 'approximate ranking aids \u2014 not measured affinity' (cad/dock.py:182)."
+      ],
+      "whatIsStubOrWrapper": [
+        "pLDDT confidence is never actually computed or surfaced \u2014 it exists only as a static note string in the report; nothing reads the B-factor/pLDDT column of the AlphaFold PDB (cad/fetch_structure.py:170). A low-confidence predicted model is downloaded and handed off to docking identically to a high-confidence one.",
+        "All real docking depends on optional external binaries (`vina`, `obabel`) being on PATH (cad/dock.py:55-56,144); with a default install nothing dockable runs.",
+        "Binding-site/box derivation depends on the chosen PDB being holo; binding_site.py just finds the largest non-solvent HETATM (cad/binding_site.py:largest_ligand) \u2014 if pick_best_pdb selects an apo structure there is simply no ligand and no box.",
+        "The blind-docking fallback emits `vina --autobox` (cad/dock.py:163), a flag that exists in smina/gnina but not upstream AutoDock Vina \u2014 so the no-center path is effectively non-functional with the very binary the file tells users to install."
+      ],
+      "inaccuracies": [
+        {
+          "title": "\"Best\" PDB ignores sequence coverage / which domain is resolved",
+          "claim": "Docstrings call the selected entry the \"best experimental structure\" / \"best PDB\" for the target (cad/fetch_structure.py:9-11, 98-99).",
+          "reality": "resolve_uniprot only captures id, Method and Resolution from each PDB cross-reference and discards the UniProt 'Chains' coverage range (cad/fetch_structure.py:62-72). pick_best_pdb ranks solely by (method preference, resolution) (cad/fetch_structure.py:98-105). A high-resolution structure of a single isolated domain or a short peptide fragment will outrank a full-length/relevant-domain structure, so it can pick a structure that does not even contain the druggable site.",
+          "evidence": "cad/fetch_structure.py:62-72, 98-105",
+          "specMismatch": false,
+          "severity": "high"
+        },
+        {
+          "title": "No apo/holo, mutant, or construct filtering \u2014 can select an unsuitable structure",
+          "claim": "Selected structure is suitable for downstream binding-site detection and docking (cad/fetch_structure.py:6-11).",
+          "reality": "Nothing distinguishes apo from holo, wild-type from mutant (e.g. EGFR T790M, kinase-dead, or engineered constructs), or chimeric fusion constructs; selection is purely method+resolution. A catalytically-dead mutant or an apo form can be chosen as 'best', and binding_site.py would then derive no box or a box around a crystallisation additive.",
+          "evidence": "cad/fetch_structure.py:98-105; cad/binding_site.py:largest_ligand (HETATM heuristic)",
+          "specMismatch": false,
+          "severity": "high"
+        },
+        {
+          "title": "AlphaFold pLDDT confidence is claimed-needed but never read",
+          "claim": "Report note: 'Predicted model \u2014 validate confidence (pLDDT) before docking' implies confidence is considered (cad/fetch_structure.py:170).",
+          "reality": "No code parses pLDDT (the per-residue B-factor column) or gates the handoff on it; a model with very low pLDDT is downloaded and reported the same as a high-confidence one, and run_pipeline proceeds to suggest docking against it.",
+          "evidence": "cad/fetch_structure.py:158-171; only occurrence of 'pLDDT' is the literal string at line 170 (grep)",
+          "specMismatch": false,
+          "severity": "high"
+        },
+        {
+          "title": "AlphaFold fetch only ever gets fragment F1 \u2014 truncates large proteins",
+          "claim": "Falls back to 'the AlphaFold predicted model' for the target (cad/fetch_structure.py:11, 157).",
+          "reality": "Both the API-derived and probed URLs, and the output filename, are hardcoded to '-F1-' (cad/fetch_structure.py:88, 162). Proteins longer than the AlphaFold per-fragment limit (>2700 aa) are split into F1, F2, \u2026 fragments; only F1 is fetched, silently yielding a partial structure for large targets.",
+          "evidence": "cad/fetch_structure.py:88, 162",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "Gene\u2192UniProt resolution takes top relevance hit (size=1) \u2014 can fetch the wrong protein",
+          "claim": "resolve_uniprot 'resolves a target/gene name to a reviewed human UniProt entry' (cad/fetch_structure.py:53-54).",
+          "reality": "Query is `(gene:{name} OR protein_name:{name})` with size=1 and results[0] taken unconditionally (cad/fetch_structure.py:55-60). For ambiguous or short gene symbols, or names that match many protein_name fields, the top relevance hit may not be the intended gene, and there is no exact-symbol verification \u2014 so the whole structure/box/dock chain can silently run on the wrong molecule.",
+          "evidence": "cad/fetch_structure.py:55-60",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "Blind-box fallback uses `--autobox`, unsupported by upstream AutoDock Vina",
+          "claim": "Omit --center for a blind box over the whole receptor (cad/dock.py:14-16, 160-163).",
+          "reality": "The fallback runs `vina ... --autobox` (cad/dock.py:163). Upstream AutoDock Vina has no --autobox option (it requires center/size or a --config / Vina-GPU; --autobox is a smina/gnina extension). With the exact binary the wrapper instructs users to install, the no-center path errors out rather than performing blind docking.",
+          "evidence": "cad/dock.py:160-163; install instructions point to ccsb-scripps/AutoDock-Vina at cad/dock.py:46-48",
+          "specMismatch": true,
+          "severity": "medium"
+        },
+        {
+          "title": "Pipeline labels docking 'feasible' from PDB count alone",
+          "claim": "SUMMARY/manifest: 'PDB structures: N (docking feasible: yes/no)' keyed on pdb_count (cad/run_pipeline.py:175).",
+          "reality": "Feasibility is decided solely by whether any PDB cross-reference exists, not by whether the structure covers the binding site, is holo, or has a definable pocket. A target with only an apo or wrong-domain PDB is reported as 'docking feasible: yes'.",
+          "evidence": "cad/run_pipeline.py:175",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "Direct --pdb download is unvalidated and trusted blindly",
+          "claim": "'--pdb <ID>' downloads that entry (cad/fetch_structure.py:113-119).",
+          "reality": "_download's return value is ignored and there is no check that the entry corresponds to the intended target; the report prints 'Fetched structure' regardless of content. CIF-format fetches also bypass clean_receptor_pdb in dock.py (only .pdb is cleaned, cad/dock.py:95), so a co-crystal ligand in a .cif receptor stays in the receptor during docking.",
+          "evidence": "cad/fetch_structure.py:44-50, 113-119; cad/dock.py:91-100",
+          "specMismatch": false,
+          "severity": "low"
+        }
+      ],
+      "usefulnessAssessment": "Useful today only for a structure-aware researcher/computational chemist who treats it as a convenience fetcher + a faithful Vina launcher and manually checks the chosen PDB. dock.py is trustworthy in the narrow sense that it will not invent affinities. The danger is automation-by-naivety: the 'best PDB' picker can hand a med-chemist the wrong domain, an apo form, or a mutant without flagging it; the AlphaFold path can pass a low-pLDDT or F1-truncated model straight into a docking command while only printing a 'validate pLDDT' string it never enforces; and the gene resolver can resolve the wrong protein for ambiguous symbols. The pipeline's 'docking feasible: yes' and ready-to-run dock command can lead a non-expert to believe a target is dock-ready when the structure is unsuitable. It would mislead anyone (oncologist, non-structural researcher) who assumes 'best structure' or 'feasible' implies validated suitability. No fabricated docking scores are presented, which is the one place it stays honest.",
+      "readmeNotes": "Limitations doc should state plainly: (1) \"best experimental PDB\" = lowest-resolution X-ray/EM cross-reference only; it does NOT consider sequence coverage, resolved domain, apo vs holo, point mutations, or engineered constructs, and can select a structure that lacks or misrepresents the binding site (cad/fetch_structure.py:98-105). (2) AlphaFold models are NOT confidence-gated \u2014 pLDDT is never read; only fragment F1 is fetched, truncating large proteins (cad/fetch_structure.py:88,162,170). (3) gene/target name resolution takes the single top UniProt hit with no exact-symbol check and can return the wrong protein (cad/fetch_structure.py:55-60). (4) dock.py does not fabricate scores, but the documented blind-box fallback `--autobox` is not a stock AutoDock Vina option and will fail (cad/dock.py:163); 'docking feasible' in SUMMARY is based only on PDB existence (cad/run_pipeline.py:175). The pipeline presents a docking box and a ready-to-run command but never presents docking results unless the real Vina binary is run."
+    },
+    {
+      "area": "Documentation reconciliation: limitations & overclaims across README.md, docs/ANTI-HALLUCINATION.md, docs/REAL-CAD-ROADMAP.md, docs/IMPLEMENTATION.md",
+      "summary": "The repo is, by its own internal docs, an honest in-silico front-end triage tool: target resolution + ligand ranking + structure fetch + docking-box geometry + RDKit liabilities + a heuristic cost-benefit model, all provenance-tagged and re-verifiable from public DBs. The deeper design docs (ANTI-HALLUCINATION.md, REAL-CAD-ROADMAP.md) are unusually candid and already enumerate most real limitations \u2014 wrapper-only docking, query-design un-checked, heuristic scoring, prose/news not audited, structure files not byte-verified, holo-only binding box. The tension is between confident headline framing (\"auditable evidence engine,\" \"make fabrication impossible to hide,\" docking marked \"implemented\") and the buried caveats that qualify each of those claims one or two layers down. A consolidated Limitations section should hoist the ANTI-HALLUCINATION/ROADMAP carve-outs to the top level and reconcile the docking \"implemented vs wrapper-only-not-run\" and stage-numbering contradictions.",
+      "whatIsReal": [
+        "Stage 1 target/druggability dossier from UniProt+ChEMBL \u2014 ROADMAP table marks 'implemented' (REAL-CAD-ROADMAP.md:17), code cad/target_report.py.",
+        "Stage 2 ligand-based virtual triage on real ChEMBL bioactivities, pChEMBL ranking + drug-likeness, novelty filter, CSV export \u2014 'implemented' (REAL-CAD-ROADMAP.md:18,49-64).",
+        "Stage 3 structure acquisition (best X-ray PDB or AlphaFold fallback) \u2014 'implemented' cad/fetch_structure.py (REAL-CAD-ROADMAP.md:19).",
+        "Stage 4 docking box from co-crystal ligand envelope, deterministic stdlib geometry \u2014 'implemented' cad/binding_site.py (REAL-CAD-ROADMAP.md:20).",
+        "Stage 6 cheminformatics/liabilities (PAINS/Brenk, GSK 4/400, Pfizer 3/75, SA score, Murcko scaffolds, Butina clustering, LE/LLE) \u2014 'implemented', gated on RDKit (REAL-CAD-ROADMAP.md:22; IMPLEMENTATION.md:95).",
+        "Stage 7 triage report orchestration to SUMMARY.md with partial-dossier degradation \u2014 'implemented' cad/run_pipeline.py (REAL-CAD-ROADMAP.md:23,28-35).",
+        "Provenance manifest + independent verifier with byte-equal SMILES check and deterministic recomputes; raises on origin='model' (ANTI-HALLUCINATION.md:13-52).",
+        "Refusal behavior: unresolved target writes nothing and exits non-zero; empty/cost-benefit-only run never earns a green banner (ANTI-HALLUCINATION.md:67-78).",
+        "examples/sample-run-egfr/ exists with a real committed run (dossier.json, hits.csv, liabilities.json, provenance.json, etc.) \u2014 confirmed on disk.",
+        "cad/requirements.txt exists; dock.py has a real check_deps()/--check path that probes for vina+obabel on PATH (cad/dock.py:55-66)."
+      ],
+      "whatIsStubOrWrapper": [
+        "Stage 5 structure-based docking (cad/dock.py): a thin wrapper on AutoDock Vina that runs only if vina+obabel binaries are present; ROADMAP labels it 'implemented' (REAL-CAD-ROADMAP.md:21) but ANTI-HALLUCINATION admits it is 'wrapper-present but not exercised in CI, because CI does not install Vina' (ANTI-HALLUCINATION.md:57-58). Effectively wrapper-only/unvalidated in the default install.",
+        "Pocket detection for apo targets: fpocket/P2Rank are 'still optional' (REAL-CAD-ROADMAP.md:20) and only listed as future how-to (lines 78-79) \u2014 not wired in. The binding box therefore only works for holo (co-crystal-ligand) structures; an AlphaFold/apo structure has no automated pocket.",
+        "Cost-benefit model (cad/cost_benefit.py): 'static benchmarks' (IMPLEMENTATION.md:99); scoring weights, oncology factor, gross margin are 'transparent, editable, non-validated design choices... not fitted to any benchmark' (ANTI-HALLUCINATION.md:60-65); modality/phase-level, 'not a target-specific prediction' (README.md:226, 38).",
+        "Triage scoring weights (virtual_triage.py): heuristic combination of real inputs, 'a triage ordering, never a prediction of efficacy' (ANTI-HALLUCINATION.md:60-65).",
+        "RDKit-dependent outputs (hits.sdf, liabilities.json, 2-D similarity, descriptors) only produced if RDKit is installed (README.md:115-116; REAL-CAD-ROADMAP.md:66-67).",
+        "cad/intel/ news digests (news_update.py, Tavily): 'leads to verify at the primary source \u2014 never validated facts' and require an API key (ANTI-HALLUCINATION.md:88-89; IMPLEMENTATION.md:102).",
+        "Generative/de-novo design and FEP are explicitly out of scope / not implemented (REAL-CAD-ROADMAP.md:94-100)."
+      ],
+      "inaccuracies": [
+        {
+          "title": "Docking stage labeled 'implemented' in roadmap but is wrapper-only and never run in CI",
+          "claim": "ROADMAP status column: stage 5 docking '**implemented** \u2014 cad/dock.py (gated on the real binaries)'",
+          "reality": "ANTI-HALLUCINATION.md:57-58 concedes docking is 'wrapper-present but not exercised in CI, because CI does not install Vina.' It produces no validated output by default; 'implemented' overstates relative to the other genuinely-running stages.",
+          "evidence": "REAL-CAD-ROADMAP.md:21 vs docs/ANTI-HALLUCINATION.md:57-58",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "README calls docking 'stage 6'; every other doc calls it stage 5",
+          "claim": "README.md:87 '# Docking (stage 6) needs two non-pip binaries on PATH'",
+          "reality": "dock.py header, the ROADMAP table, and ROADMAP prose all number docking as stage 5 and the cheminformatics/liability pass as stage 6 (cad/dock.py:3 'stage 5'; REAL-CAD-ROADMAP.md:21 row 5 = docking, line 28 'cheminformatics liability pass (stage 6)'). README has the two swapped.",
+          "evidence": "README.md:87 vs cad/dock.py:3, REAL-CAD-ROADMAP.md:21,28,32",
+          "specMismatch": false,
+          "severity": "low"
+        },
+        {
+          "title": "Live-site URL/branding inconsistent across docs",
+          "claim": "README.md:17 advertises the live app at provenika.com; clone URL is github.com/Aroxora/provenika",
+          "reality": "IMPLEMENTATION.md:275 says the live site is https://cancer-cure-osint.web.app (Firebase project cancer-cure-osint), and the deploy commands target that project \u2014 a different domain than the README's provenika.com. A reader cannot tell which is canonical.",
+          "evidence": "README.md:17 vs docs/IMPLEMENTATION.md:275,280,284",
+          "specMismatch": false,
+          "severity": "low"
+        },
+        {
+          "title": "Headline 'make fabrication impossible to hide' is broader than what verify.py actually proves",
+          "claim": "README.md:7 '...and make fabrication impossible to hide'; README.md:35 verifier 'Re-pulls every figure from its live source'",
+          "reality": "Count checks only re-run the same query logic, proving reproducibility/freshness, not query-design correctness: 'A wrong-but-stable query would pass' (ANTI-HALLUCINATION.md:42-44,90). Free-text prose, news digests, and structure-file byte-integrity are explicitly NOT covered (ANTI-HALLUCINATION.md:85-93). So a class of fabrication (wrong query design, fabricated prose) is in fact hideable.",
+          "evidence": "README.md:7,35 vs docs/ANTI-HALLUCINATION.md:42-44,85-93",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "'every figure can be traced back... and re-proven with one command' omits the carve-outs",
+          "claim": "README.md:12 'where every figure can be traced back to a public record and re-proven with one command'",
+          "reality": "The guarantee covers only figures in machine-readable artifacts; SUMMARY.md prose, target_report.py read-out lines, and cad/intel/ digests are unaudited summaries/leads (ANTI-HALLUCINATION.md:85-89). README's own 'Honest scope' paragraph (lines 41-44) qualifies this but the headline does not.",
+          "evidence": "README.md:12 vs README.md:41-44, docs/ANTI-HALLUCINATION.md:85-90",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "Binding-box stage presented as general but only works for holo structures",
+          "claim": "README.md:118 'binding_site.json \u2014 Docking box computed from the co-crystal ligand envelope'; ROADMAP stage 4 'implemented'",
+          "reality": "The box derivation needs a co-crystal ligand; for apo or AlphaFold structures there is none, and fpocket/P2Rank are 'still optional'/not wired (REAL-CAD-ROADMAP.md:20). So stage 4 silently does not apply to the AlphaFold-fallback structures stage 3 may return.",
+          "evidence": "README.md:117-118, REAL-CAD-ROADMAP.md:19-20",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "Repo name 'cancer-cure-agent' contradicts the stated scope",
+          "claim": "Repo/dir name cancer-cure-agent; IMPLEMENTATION.md:7 'must never... claim to discover or cure anything'",
+          "reality": "The product is renamed 'Provenika' and disclaims curing throughout (README.md:3-4,163-166), yet the repository name still asserts a cure. Pure framing/branding mismatch, neutralized only by disclaimers.",
+          "evidence": "IMPLEMENTATION.md:7 vs README.md:3-4,163-166",
+          "specMismatch": false,
+          "severity": "low"
+        }
+      ],
+      "usefulnessAssessment": "Useful today for med-chemists / computational-biology researchers as a fast, fully-cited triage front-end: resolve a target, pull measured-active ChEMBL ligands ranked by potency+drug-likeness, flag PAINS/Brenk/developability liabilities, fetch a structure, and get a Vina-ready docking box \u2014 every number re-verifiable against a public URL. It would mislead anyone who reads only the headline: docking yields no scores out-of-the-box (wrapper not run), the cost-benefit 'feasibility verdict' is a non-validated modality/phase benchmark not a target prediction, the binding box quietly fails on apo/AlphaFold structures, and the verifier's PASS does not certify the query design or any free-text claim. It is explicitly NOT for oncologists or any clinical use \u2014 no diagnosis, prognosis, dosing, or treatment recommendation \u2014 and the docs (and CI medical-safety audit) enforce that. Honest framing: a provenance/audit research aid for the cheap in-silico front of discovery, not a discovery or validation engine.",
+      "readmeNotes": "For the consolidated Limitations section, hoist these already-acknowledged-but-buried caveats to top level: (1) Docking (dock.py) is a wrapper only \u2014 never run in CI, produces no score without locally-installed vina+obabel; reconcile the ROADMAP 'implemented' label with ANTI-HALLUCINATION's 'wrapper-present but not exercised' (ROADMAP:21 vs ANTI-HALL:57-58). (2) verify.py PASS = reproducibility/freshness, NOT query-design correctness \u2014 'a wrong-but-stable query would pass' (ANTI-HALL:42-44). (3) Coverage carve-outs: SUMMARY.md prose, target_report read-outs, cad/intel news digests, and structure-file byte-integrity are NOT audited (ANTI-HALL:85-93). (4) Cost-benefit + triage weights are non-validated heuristics; the feasibility verdict is modality/phase-level, not target-specific (ANTI-HALL:60-65, README:226). (5) Binding box is holo-only; apo/AlphaFold structures get no automated pocket (ROADMAP:20). (6) Triage \u2260 validation; no selectivity/cell/safety, ChEMBL coverage uneven (ROADMAP:69-71). Specific phrasings to soften: README:7 'make fabrication impossible to hide' and README:12 'every figure can be traced back... re-proven with one command' overclaim relative to the prose/query-design carve-outs; the 'auditable evidence engine' headline (README:9) should sit adjacent to the wrapper-only-docking caveat. Fix concrete errors: README:87 mislabels docking as 'stage 6' (it is stage 5); reconcile provenika.com (README:17) vs cancer-cure-osint.web.app (IMPLEMENTATION:275)."
+    },
+    {
+      "area": "Real-world usefulness, traction/adoption claims, and the outreach system",
+      "summary": "This repo is an honestly-scoped \"auditable evidence engine\" for the cheap, in-silico front of oncology drug discovery (target triage to ligand shortlist to structure to docking-box to feasibility), where every machine-readable figure is either fetched-and-cited from a public DB or deterministically computed, with a one-command re-verifier. The CADD core and the committed EGFR sample run are genuinely real and re-runnable. But there is ZERO evidence of any real oncologist or researcher using it: utility is entirely prospective. The \"outreach\" system is not patient/clinician outreach at all \u2014 it is an investor-fundraising email agent, and it is not live: status.json reports overall:fail, send_enabled:false, sent:0; all 4 stored contacts are VCs (OSS Capital, Decibel, Amplify, Lux) sitting in \"drafted\" status; the public outreach log has zero entries. Crucially, the repo's own pitch/business docs are unusually candid: traction is left as explicit \"[fill in]\" placeholders, the business verdict is \"pass as a venture investment,\" and the README leads with \"an AI agent CANNOT cure cancer.\" So the project does NOT fabricate adoption \u2014 its main honesty risk is the gap between an impressive-looking provenance/pitch apparatus and the fact that nobody is using it and nothing has shipped to a real user.",
+      "whatIsReal": [
+        "The committed EGFR sample run is a real, unedited pipeline snapshot from live public data (UniProt P00533, ChEMBL, RCSB PDB): examples/sample-run-egfr/SUMMARY.md:4-8 reports 354 PDB structures, 21342 potent ChEMBL activities, 49 known-mechanism drugs, plus a real 8A27.pdb structure and a binding box computed from the KY9 co-crystal ligand (SUMMARY.md:21-23).",
+        "A genuinely useful med-chem artifact ships: hits.csv (25 ranked ligand candidates with SMILES + ChEMBL links), hits.sdf (3-D, property-tagged for PyMOL/Maestro/docking), and liabilities.json with RDKit PAINS/Brenk + Pfizer 3/75 / GSK 4/400 developability flags (examples/sample-run-egfr/README.md:36-42, SUMMARY.md:12-16). This is a legitimately handoff-able shortlist for real downstream tools.",
+        "Enforced provenance is real and re-checkable: README.md:32-40 documents cad/provenance.py (origin-tags every figure) and cad/verify.py (re-pulls each figure live -> PASS/DRIFT/FAIL, byte-equal SMILES check vs ChEMBL), CI-gated.",
+        "The repo refuses to fake outputs: cad/dock.py is a thin AutoDock Vina wrapper that exits with install steps rather than inventing a docking score; run_pipeline.py refuses a feasibility verdict for an unresolved/fictional target (README.md:36-37).",
+        "The outreach agent code exists and is functional in dry-run: outreach/agent.py, emailer.py, store.py, monitor.py, with a real RAG-grounded drafting flow and 4 researched VC prospect profiles in outreach/.state/store.json.",
+        "Business/pitch self-analysis is real and rigorous: business/README.md and BUSINESS-MODEL-AND-FUNDING.md give a cited, skeptical 'pass as a venture investment' verdict with named comparables."
+      ],
+      "whatIsStubOrWrapper": [
+        "The 'outreach' system is mislabeled relative to the user's question: it is an INVESTOR fundraising email agent, not oncologist/researcher outreach. All 4 contacts are VCs (outreach/.state/store.json: hello@oss.capital, founders@decibel.vc, info@amplifypartners.com, info@luxcapital.com), all category *_vc.",
+        "The outreach system is NOT live. web/public/data/outreach/status.json:3 overall:fail; :32-33 'Outreach monitor' status:fail 'unavailable'; :37 send_enabled:false; :42-47 sent:0, replied:0, only 4 drafts. control.json: sendEnabled:false, updatedBy:'test'. All 4 contacts are status:'drafted' \u2014 nothing was ever sent.",
+        "No actual emails have gone out: no .outbox/ directory, no monitor.log, no sent/contacted timestamps in the store; web/public/data/outreach/log.json has totals all 0 and entries:[].",
+        "The cost-benefit / feasibility verdict is a modality/phase-level benchmark from published priors, NOT a target-specific prediction \u2014 it returns identical numbers for any target with the same inputs (examples/sample-run-egfr/SUMMARY.md:26, README.md:38). The EGFR run's 'P(approval) 5.1%, benefit/cost 1.03' figures say nothing specific about EGFR.",
+        "Docking (the step that would make a hit actionable) only runs if a real AutoDock Vina + Open Babel binary is present locally; otherwise it just prints install steps (cad/dock.py per README.md:36).",
+        "All pitch 'traction' is placeholder: pitch/PITCH.md:47-56, ONE-PAGER.md:13-15, and pitch/YC.md:24 leave GitHub stars / runs / users / design partners / team / ask as literal '[fill in]'."
+      ],
+      "inaccuracies": [
+        {
+          "title": "No evidence of any real oncologist or researcher usage \u2014 utility is entirely prospective",
+          "claim": "YC.md:9-12 frames the product as producing hypotheses 'for oncology researchers'; README markets provenika.com as a live tool for 'human scientists'.",
+          "reality": "There is no user, usage log, design partner, or adoption artifact anywhere in the repo. The only 'users' represented are 4 VC fundraising prospects, none contacted. The public outreach log (web/public/data/outreach/log.json:5-11) has all-zero totals and zero entries.",
+          "evidence": "web/public/data/outreach/log.json:5-11; outreach/.state/store.json (4 VC contacts, all 'drafted'); pitch/YC.md:24 ('any users/design partners' left as [fill in])",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "Outreach system advertised with live cloud architecture but is failing and disabled",
+          "claim": "outreach/README.md:1,34-49 describes a running agent (RAG memory, AWS Lambda EventBridge daily, Firestore, 24/7 IMAP monitor) that 'sends within strict caps' and 'publishes a public log'.",
+          "reality": "The system is not operational: status.json overall:fail, outreach monitor 'unavailable', Firestore 'degraded', send_enabled:false, sent:0. It exists as code in dry-run only; nothing has ever been sent and no monitor is running (no monitor.log).",
+          "evidence": "web/public/data/outreach/status.json:3,26-33,37,44; outreach/.state/control.json (sendEnabled:false, updatedBy:'test')",
+          "specMismatch": false,
+          "severity": "low"
+        },
+        {
+          "title": "README headline 'auditable oncology evidence engine' could imply a clinician-facing product",
+          "claim": "README.md:1 titles it 'auditable oncology evidence engine'; README.md:17 promotes 'Try it live' at provenika.com with 'disease -> targets -> triage -> structure -> models'.",
+          "reality": "The tool only addresses the in-silico research front (public-data target/ligand triage). It explicitly cannot help a clinician with a patient \u2014 and the README itself says so up front, so this is mitigated, not hidden. The risk is a reader skimming the title/landing claims without the disclaimer.",
+          "evidence": "README.md:1,3-7,14-15 (disclaimer: 'cannot cure cancer... Not medical advice'), README.md:165 ('replace docking/ADMET/wet-lab/a clinician' listed under what it does NOT do)",
+          "specMismatch": false,
+          "severity": "low"
+        },
+        {
+          "title": "Feasibility/cost-benefit numbers in the sample run can read as target-specific de-risking",
+          "claim": "examples/sample-run-egfr/SUMMARY.md:25-31 presents concrete EGFR figures: 'P(approval) from phase1: 5.1%', 'Expected remaining cost: $360M', 'benefit/cost 1.03', 'Marginal'.",
+          "reality": "These are generic modality/phase priors, identical for any small_molecule@phase1 target regardless of EGFR-specific evidence; they do not reflect EGFR at all. The doc does flag this (line 26), but the numeric presentation invites over-reading.",
+          "evidence": "examples/sample-run-egfr/SUMMARY.md:26 ('Identical inputs give identical figures for any target; it does not know this target')",
+          "specMismatch": false,
+          "severity": "low"
+        }
+      ],
+      "usefulnessAssessment": "Realistically useful TODAY, to a med-chemist or computational/oncology researcher: (1) Fast, keyless target triage and a druggability dossier (PDB count, ChEMBL activity volume, known-mechanism drugs) to decide whether a target is worth pursuing \u2014 genuinely handy as a first-pass screen, though Open Targets does the prioritization more rigorously for free. (2) A cited 25-ligand shortlist (hits.csv/hits.sdf with SMILES + ChEMBL links + RDKit PAINS/Brenk/developability flags) that can be handed straight into real docking/ADMET tools \u2014 a legitimate time-saver, provided the user treats it as an unvalidated similarity-triage starting point, not a ranking of efficacy. (3) A best experimental structure + a computed docking box to bootstrap a real AutoDock Vina run. (4) The provenance/verify mechanism is a real differentiator for anyone who must defend a number to a reviewer or tumor board. Where it would MISLEAD: anyone reading the feasibility verdict (P(approval), benefit/cost) as target-specific de-risking \u2014 it is a generic phase/modality prior; anyone treating the ligand ranking as predicted potency/efficacy (it is structural similarity triage, no binding prediction without the optional Vina step); and any clinician expecting patient-level guidance \u2014 explicitly out of scope. It is NOT useful to a practicing oncologist for any patient-facing decision, and the repo correctly says so.",
+      "readmeNotes": "The README is unusually honest and largely avoids overclaiming traction: it leads with 'an AI agent CANNOT cure cancer' (README.md:3-7), keeps all pitch traction as explicit '[fill in]' placeholders (pitch/PITCH.md:47-56, YC.md:24, ONE-PAGER.md:13), and the business docs deliver a candid 'pass as a venture investment' verdict (business/README.md:9-10). Caveats worth adding: (1) README.md:211 describes the outreach system as one that 'sends, classifies replies, and schedules follow-ups' \u2014 true only of the code path; in reality it has never sent anything (status.json sent:0, send_enabled:false), and a reader could infer an active campaign. (2) The title 'auditable oncology evidence engine' (README.md:1) plus the provgenerika.com 'try it live' framing (README.md:17) should keep the research-only disclaimer adjacent, since the word 'oncology' invites a clinical reading. (3) Nowhere does the README claim users/oncologists/adoption \u2014 that gap is honest, but it also means any external 'who uses this' narrative is currently empty, and the investor outreach (4 unsent VC drafts) is the only 'real-world' activity, which is fundraising, not adoption."
+    },
+    {
+      "area": "Node/TypeScript OSINT tool layer (src/tools/cancer/, cancer-cli, tool-count + keyless one-liners)",
+      "summary": "The \"63 OSINT tools\" number is literally accurate \u2014 createCancerTools() in src/tools/cancer/index.ts aggregates 14 modules whose ToolDefinition names total exactly 63, and cicd/generate_readme.py:31 computes that live, so the README count is not fabricated. But the \"OSINT / search live\" framing is an overclaim: only ~21 of the 63 actually hit free public APIs keyless (PubMed/NCBI, ClinicalTrials.gov, cBioPortal, ChEMBL, UniProt, KEGG, Open Targets). The remaining ~42 split into (a) ~13 thin Tavily query-wrappers in research/ that require TAVILY_API_KEY and throw without it, plus several discovery/biotech tools that also gate on Tavily, and (b) ~25 static curated-dataset / template-generator tools (oral-therapy lists, gap-analysis catalogs, CAR-T/mRNA/IND \"design\" scaffolds, hardcoded treatment/biomarker heuristics) that query no external source at all. The 6 keyless one-liners are genuine: osintMode.ts dispatches each to a live public-API client with no key. The \"8 data sources\" self-test is accurate \u2014 runConnectivityTest probes exactly 8 endpoints live.",
+      "whatIsReal": [
+        "The 6 keyless one-liners genuinely dispatch to live public APIs with no key. src/headless/osintMode.ts:19-26 maps each pattern to a real handler: PubMedSearch (NCBI eutils), ClinicalTrialSearch (clinicaltrials.gov v2), GetProteinInfo (UniProt), FindPathwaysForGene (KEGG), FindDrugsForTarget (ChEMBL), FindTargetsForDisease (Open Targets); runOsintMode (lines 66-86) calls the tool handler directly, no LLM/key.",
+        "The underlying clients hit real free endpoints with no API key required: pubmedClient.ts:116 (eutils.ncbi.nlm.nih.gov, key only raises rate limit), clinicalTrialsClient.ts:151 (clinicaltrials.gov/api/v2), uniprotClient.ts:89 (rest.uniprot.org), keggClient.ts:48 (rest.kegg.jp), chemblClient.ts:110 (ebi.ac.uk/chembl), openTargetsClient.ts:39 (api.platform.opentargets.org).",
+        "PubMedSearch handler uses an optional NCBI key purely for rate-limit and works keyless: src/tools/cancer/literature/pubmedTools.ts handler reads getSecretValue('NCBI_API_KEY') ?? undefined and pubmedClient.ts:117 sets 3/sec without key vs 10/sec with.",
+        "The tool count is computed live, not hardcoded: cicd/generate_readme.py:30-31 require()s dist/tools/cancer/index.js and prints createCancerTools().length; the 14 modules in src/tools/cancer/index.ts:42-57 do sum to 63 distinct tool names.",
+        "The genuinely-live keyless OSINT layer (~21 tools): 3 PubMed, 3 ClinicalTrials, 4 cBioPortal genomics (variantTools.ts), 5 drug/target (ChEMBL+UniProt, targetTools.ts), 1 Open Targets (diseaseTargetTools.ts), 5 KEGG pathway (pathwayTools.ts).",
+        "The --self-test really probes 8 live data sources: src/bin/cancer-cli.ts:204-268 lists PubMed/NCBI, ClinicalTrials.gov, UniProt, RCSB PDB, cBioPortal, KEGG, ChEMBL, Open Targets and calls client.testConnection() on each \u2014 matching README's '8 data sources' claim."
+      ],
+      "whatIsStubOrWrapper": [
+        "13 research/ tools are thin Tavily query-variant wrappers that all funnel into the same TavilyClient.search and REQUIRE a key: createTavilyClient (src/datasources/research/tavilyClient.ts:506-511) throws 'Tavily API key required' when TAVILY_API_KEY is unset. Tools: SearchDrugResearch, SearchClinicalTrials, SearchBiomarkerResearch, VerifyMedicalClaim, SearchFDAApprovals, SearchNCCNGuidelines, SearchResistanceMechanisms, SearchTherapeuticTargets, SearchLiterature, SearchPrecisionMedicine, SearchImmunotherapy, SearchDrugInteractions, GetLatestResearchNews (researchTools.ts:302-571). They differ only by query prefix.",
+        "These research wrappers functionally duplicate the live-API tools: research/SearchClinicalTrials (Tavily) vs clinical/ClinicalTrialSearch (real clinicaltrials.gov); research/SearchLiterature vs literature/PubMedSearch; research/SearchTherapeuticTargets vs drug-discovery target tools.",
+        "discovery/oralTherapyTools.ts tools (FindOralTherapy, GetOralTherapyByTarget, ListAllOralTherapies) serve a hardcoded list of ~33 FDA drugs defined inline (oralTherapyTools.ts:39-425); CompileTargetedTherapyBrief additionally calls Tavily (getClient at line 537, which THROWS if no key, oralTherapyTools.ts:27-29).",
+        "discovery/oralDrugPipeline.ts (ListAllOralDrugCandidates, FindOralPillForCancer, GenerateOralDrugSummary) queries no external source \u2014 pure static curated dataset (no fetch/client references in file).",
+        "discovery/cadTools.ts DesignCARTTherapy, DesignmRNAVaccine, GenerateFDAProposal are template/scaffold generators (honestly described as 'educational scaffold, not a validated construct'); IdentifyTherapeuticTargets/SearchEmergingSolutions call Tavily via getClient (cadTools.ts:89,309).",
+        "discovery/gapAnalysisTools.ts list tools (GetUnmetNeedStats, ListNoScreeningCancers, ListRareCancers, ListEmergingTech, AnalyzeAllGaps) return a hardcoded gap catalog (gapAnalysisTools.ts:124-288); ProposeCADSolution and SearchEmergingSolutions call Tavily (getClient at 368,485) which throws without a key.",
+        "patient/treatmentTools.ts (RecommendTreatment, StratifyRisk, AssessTreatmentResponse) are hardcoded heuristic knowledge bases with no external source; the risk model is explicitly labeled 'Composite Risk Score (non-validated heuristic)' (treatmentTools.ts:463).",
+        "patient/biomarkerTools.ts (AnalyzeBiomarker, InterpretBiomarkerPanel, GetPrognosticAssessment) are hardcoded; InterpretBiomarkerPanel carries a stub comment 'Actual Biomarker objects would be fetched from database in production' (biomarkerTools.ts:220) and returns 'Reference range not available in database' (line 132).",
+        "biotech/curativeTools.ts SearchCurativeBiotech uses Tavily (getClient at curativeTools.ts:221, requires key); GetCARTDetails/AssessCurativePotential/DesignCurativeProtocol are canned/templated."
+      ],
+      "inaccuracies": [
+        {
+          "title": "README frames all 63 as live-searching OSINT tools, but only ~21 query live public APIs keyless",
+          "claim": "README.md:159-160 says the framework can 'search PubMed / ClinicalTrials.gov / cBioPortal / ChEMBL / KEGG / RCSB PDB / UniProt live (63 OSINT tools)', implying the 63 are live OSINT lookups.",
+          "reality": "Of the 63, only ~21 hit those live public APIs. ~13 research/ tools require a paid TAVILY_API_KEY (createTavilyClient throws without it), and ~25 are static curated-dataset or template-generator tools that contact no external source (oralDrugPipeline.ts, gapAnalysis list tools, cadTools design scaffolds, treatmentTools, biomarkerTools).",
+          "evidence": "README.md:159-160; src/datasources/research/tavilyClient.ts:506-511; src/tools/cancer/research/researchTools.ts:302-571; src/tools/cancer/discovery/oralDrugPipeline.ts; src/tools/cancer/patient/treatmentTools.ts:463",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "Tool count is real but inflated by thin Tavily query-variants and static list/template tools",
+          "claim": "'63 OSINT tools' (README.md:160,234) presented as the framework's OSINT capability surface.",
+          "reality": "createCancerTools().length is genuinely 63 (index.ts:42-57), so the number is not fabricated \u2014 but it is padded: 13 research tools differ only by a hardcoded query prefix into the same Tavily.search, and several duplicate the live-API tools (SearchClinicalTrials vs ClinicalTrialSearch; SearchLiterature vs PubMedSearch).",
+          "evidence": "src/tools/cancer/index.ts:42-57; cicd/generate_readme.py:30-31; src/tools/cancer/research/researchTools.ts:331,486; src/tools/cancer/clinical/trialTools.ts:16; src/tools/cancer/literature/pubmedTools.ts:17",
+          "specMismatch": false,
+          "severity": "medium"
+        },
+        {
+          "title": "Tavily-gated tools are presented alongside keyless OSINT without a key caveat",
+          "claim": "README's OSINT section (README.md:170-182) emphasizes 'keyless' and 'no API key', and many tool descriptions (e.g. CompileTargetedTherapyBrief, ProposeCADSolution) read as available capabilities.",
+          "reality": "CompileTargetedTherapyBrief, SearchCurativeBiotech, ProposeCADSolution, SearchEmergingSolutions, IdentifyTherapeuticTargets and all 13 research/ tools throw 'Tavily API key required' at runtime when TAVILY_API_KEY is unset \u2014 they are neither keyless nor free.",
+          "evidence": "src/datasources/research/tavilyClient.ts:509; src/tools/cancer/discovery/oralTherapyTools.ts:27-29,537; src/tools/cancer/discovery/gapAnalysisTools.ts:368,485; src/tools/cancer/biotech/curativeTools.ts:221",
+          "specMismatch": false,
+          "severity": "low"
+        },
+        {
+          "title": "InterpretBiomarkerPanel contains an unfinished 'in production' stub path",
+          "claim": "AnalyzeBiomarker/InterpretBiomarkerPanel presented as a working biomarker interpretation capability.",
+          "reality": "The handler returns a panel object with a TODO-style comment that real Biomarker objects 'would be fetched from database in production', and falls back to 'Reference range not available in database' \u2014 i.e. it is a partial hardcoded heuristic, not a real biomarker database lookup.",
+          "evidence": "src/tools/cancer/patient/biomarkerTools.ts:132,220",
+          "specMismatch": false,
+          "severity": "low"
+        }
+      ],
+      "usefulnessAssessment": "Useful today for researchers/med-chemists doing keyless literature and target triage: the 6 one-liners and the ~21 live-API tools (PubMed, ClinicalTrials.gov, cBioPortal, ChEMBL, UniProt, KEGG, Open Targets) genuinely return cited, re-verifiable public-database results without any key, and --self-test honestly confirms 8 live endpoints. It would mislead a user who reads '63 OSINT tools' as 63 live external lookups: ~13 research tools silently need a paid Tavily key, and ~25 'discovery/patient' tools (oral-drug pipeline, gap analysis, CAR-T/mRNA/IND 'design', treatment/biomarker recommendations) are static curated datasets or template scaffolds \u2014 they look authoritative but query nothing live and, for the treatment/biomarker/prognosis tools, are explicitly non-validated heuristics that no clinician should act on. The tool descriptions themselves are mostly honest ('reference data only', 'educational scaffold', 'non-validated heuristic'), so the gap is in the README's aggregate framing, not the per-tool docstrings.",
+      "readmeNotes": "README.md:159-160 ('search ... live (63 OSINT tools)') should distinguish the ~21 live-keyless public-API tools from the ~13 Tavily-key-gated research wrappers and the ~25 static curated/template tools; as written it implies all 63 are live OSINT lookups. README.md:178-179 ('These six research one-liners ... need no API key') is accurate and well-scoped \u2014 but the broader '63 OSINT tools' headline (also README.md:234) should add a one-line caveat that the research/discovery tools require TAVILY_API_KEY or return curated reference data rather than live queries. The '8 data sources' / '--self-test live-check all 8' claim (README.md:173,180) is accurate (cancer-cli.ts:204-268). Worth noting the one-liners cover only 6 of those 8 sources (no one-liner for cBioPortal or RCSB PDB)."
+    }
+  ],
+  "verifies": [
+    {
+      "title": "Preclinical approval prior attributed to BIO but not in BIO report",
+      "verdict": "confirmed",
+      "evidence": "cad/cost_benefit.py:35-37 (LOA_FROM_PHASE header \"overall, BIO 2011-2020\" plus preclinical:0.060 with \"rough: ~6%\" comment); cad/cost_benefit.py:121 (sources: \"BIO/Informa CDSR 2011-2020; ...\")",
+      "correctedStatement": "The preclinical likelihood-of-approval value (0.060) is a rough author estimate, not a published figure: the BIO/Informa/QLS Clinical Development Success Rates 2011-2020 report cited as the source only reports clinical-phase rates (Phase I onward), so the preclinical-to-approval number is surfaced under a citation that does not actually contain it.",
+      "note": "The four clinical-phase values (phase1 0.079, phase2 0.151, phase3 0.460, filed 0.906) do match the real BIO 2011-2020 report, so the citation is accurate for those. Only the preclinical row is unsupported by the cited source. The code does hedge it inline (\"rough: ~6%\"), but the per-phase header comment (line 35) and the assumptions \"sources\" string (line 121) both attribute the whole dict \u2014 including preclinical \u2014 to BIO/Informa CDSR, so the misattribution is real albeit narrow."
+    },
+    {
+      "title": "Risk-adjusted gross profit mislabeled as 'revenue'",
+      "verdict": "confirmed",
+      "evidence": "cad/cost_benefit.py:86-87 (gross_margin=0.80; risk_adj_rev = loa * peak_annual_rev * years_at_peak * gross_margin), 109 (key 'risk_adjusted_revenue_musd'), 139 (printed 'Risk-adjusted revenue')",
+      "correctedStatement": "The cost-benefit tool's `risk_adjusted_revenue_musd` output and its \"Risk-adjusted revenue\" printout are actually risk-adjusted gross profit, since the value is multiplied by an 0.80 gross-margin factor (cad/cost_benefit.py:87), so the benefit-cost ratio compares profit to cost despite the \"revenue\" label.",
+      "note": "Verified directly in cad/cost_benefit.py. The peak_annual_rev (line 85, incidence*price*penetration) is genuine revenue, but risk_adj_rev applies loa * years_at_peak * 0.80 gross_margin, making the labeled \"revenue\" field a gross-profit quantity. The mislabel is real, not overstated; gross_margin is also listed in assumptions (line 120) so the calculation is transparent, but the field/print names remain inaccurate. No external spec is involved."
+    },
+    {
+      "title": "No time-value discounting over a ~9.5-year horizon inflates the benefit/cost ratio",
+      "verdict": "confirmed",
+      "evidence": "cad/cost_benefit.py:87 (risk_adj_rev = loa * peak_annual_rev * years_at_peak * gross_margin \u2014 no discount term); cad/cost_benefit.py:45-51 (phase durations sum to 9.5 yrs before launch); cad/cost_benefit.py:90 (bcr = risk_adj_rev / cost_dollars); no discount-rate flag in argparse at lines 152-165",
+      "correctedStatement": "The cost-benefit model values future peak-sales gross profit at face value with no NPV/discount-rate parameter, even though sales begin only after summed phase durations of ~9.5 years from preclinical, so its benefit/cost ratio overstates a properly time-discounted rNPV.",
+      "note": "Independently confirmed by reading the whole file. Line 87 applies loa, years_at_peak, and an 0.80 gross margin but no discount factor; line 90 divides this by undiscounted remaining cost. There is no discount/NPV flag in main()'s argparse (lines 152-165). Minor refinement to the audit's wording: gross_margin is applied so the figure is gross profit (not raw revenue), and the cost side is also undiscounted \u2014 but because revenue is realized years after spend, omitting discounting still inflates BCR, so the claim stands."
+    },
+    {
+      "title": "Asymmetric risk treatment: revenue is probability-weighted, cost is not",
+      "verdict": "confirmed",
+      "evidence": "cad/cost_benefit.py:81 (exp_cost = sum of all remaining phase costs * mult, no LOA weighting, no discount) vs cad/cost_benefit.py:87 (risk_adj_rev = loa * peak_annual_rev * years_at_peak * gross_margin); result key labeled \"expected_remaining_cost_musd\" at line 106 and docstring \"expected remaining development cost\" at line 8.",
+      "correctedStatement": "In the cost-benefit triage, revenue is risk-adjusted by multiplying by the likelihood of approval while the \"expected remaining cost\" is the full deterministic sum of all remaining per-phase costs (scaled only by a modality multiplier), with no probability-of-reaching-phase weighting and no time discounting on either side; so benefit and cost are risk-adjusted on inconsistent bases and the benefit/cost ratio is not a true rNPV/expected-value (it tends to be conservative, since probability-weighting later costs would lower expected cost).",
+      "note": "Verified directly in cad/cost_benefit.py. The audit's technical observation is accurate: line 87 weights revenue by LOA, lines 80-81 sum the full remaining cost path unweighted and undiscounted. Worth a small correction to the audit's framing: this asymmetry biases the BCR downward (conservative), not upward, because a proper rNPV would weight later-phase costs by the (sub-1) probability of reaching them, reducing expected cost and raising the ratio. The file's own docstring already disclaims it as a \"rough go/no-go triage aid... NOT financial advice, a valuation\" (lines 13-14), but the \"expected remaining cost\" label (lines 8, 106) does overstate what is actually a full conditional forward-path cost."
+    },
+    {
+      "title": "Wong et al. 2019 cited for per-phase cost it does not provide",
+      "verdict": "confirmed",
+      "evidence": "cad/cost_benefit.py:19-20 (Wong+DiMasi jointly cited for \"per-phase out-of-pocket cost & duration\"); :38 (phase1 LOA=0.079, labeled BIO 2011-2020, not Wong's ~13.8%); :47-49 (costs 25/60/255 $M, DiMasi-lineage); :121 (sources string lists \"Wong et al. 2019\")",
+      "correctedStatement": "The cost-benefit model cites Wong, Siah & Lo (2019) alongside DiMasi et al. (2016) as the source for per-phase out-of-pocket costs, but Wong et al. estimated trial success rates and durations rather than development costs; the encoded cost figures (e.g., 25/60/255 $M) are of DiMasi lineage and the success rates actually used (e.g., 7.9% from Phase 1) are attributed to BIO/Informa 2011-2020, so none of Wong's specific numbers are the ones encoded.",
+      "note": "Confirmed but with one nuance: the docstring bundles \"cost & duration\" together, and Wong is a legitimate source for trial durations/success rates in general \u2014 so it is not a wholly bogus citation, only mis-scoped (it does not provide cost data, and its own headline PoS of ~13.8% is overridden by BIO's 7.9% at line 38). The encoded durations (1.5/2.5/3.0 yr) are round planning heuristics, not Wong's exact values either. This is a citation/attribution accuracy issue rather than a runtime spec mismatch; the cleanest fix is to attribute per-phase costs to DiMasi 2016 only and reserve Wong 2019 for success-rate/duration context."
+    },
+    {
+      "title": "Verdict BCR thresholds have no cited or derived basis",
+      "verdict": "confirmed",
+      "evidence": "cad/cost_benefit.py:92-99 (thresholds 5/1.5/0.8 hardcoded, no comment/source); contrast cad/cost_benefit.py:35-42, 44-51, 53-68 which cite or label every other constant; bcr computed undiscounted at cad/cost_benefit.py:90",
+      "correctedStatement": "The go/no-go verdict bands (BCR >= 5, >= 1.5, >= 0.8) in cad/cost_benefit.py are hardcoded round-number cutoffs with no cited source, derivation, or sensitivity analysis \u2014 unlike the LOA, cost, and multiplier constants in the same file, which are sourced or explicitly labeled heuristic \u2014 and they convert an undiscounted, gross-margin-revenue-over-cost ratio into the tool's single headline label.",
+      "note": "Confirmed against the actual file. The thresholds at lines 92-99 carry no citation while the file otherwise documents every constant, and the BCR (line 90) applies no discounting. Slightly mitigated by the module's heavy 'rough triage aid / order-of-magnitude' disclaimers (lines 12-21, 146-147), but the specific numeric cutoffs that drive the headline verdict are genuinely unvalidated, so the audit stands."
+    },
+    {
+      "title": "Verdict reads as a target/program-specific prediction but is a pure modality x phase benchmark",
+      "verdict": "partly",
+      "evidence": "cad/cost_benefit.py:76 (loa = LOA_FROM_PHASE[phase] * oncology factor); :105 (probability_of_approval = round(loa,4)); :90-99 (verdict derived from bcr, which uses user market inputs at :85,:87,:81); :12-14 (docstring already labels all values as published benchmarks / triage aid, not a clinical claim)",
+      "correctedStatement": "The cost_benefit tool's probability_of_approval is a fixed industry benchmark (LOA_FROM_PHASE[phase] optionally times a single oncology factor) with no target-, molecule-, or biology-specific input, so any program at the same phase and oncology flag gets the identical approval probability; the headline verdict additionally reflects user-entered market assumptions (incidence, price, penetration, modality cost), but never any program-specific scientific evidence.",
+      "note": "Core technical claim is confirmed: at line 76 the approval probability is purely a phase lookup x oncology flag, with zero biology/target/molecule input. However the audit overstates two things: (1) it says every same-phase/modality/oncology program gets 'the same verdict' \u2014 the verdict (lines 92-99) is a function of bcr, which varies with user-entered incidence/price/penetration/years and the modality cost multiplier, so verdicts can differ; only the approval probability is truly identical. (2) It frames the code as masquerading as a per-proposal/target-specific prediction, but the docstring (lines 12-14, 16-21) and CLI output already explicitly and repeatedly disclose that every value is a published, editable benchmark and 'a rough go/no-go triage aid \u2014 NOT financial advice, a valuation, or a clinical claim,' and print each assumption/source alongside the result. So the limitation is real but already substantially disclosed; verdict is 'partly'."
+    },
+    {
+      "title": "Drug-likeness score double-counts Lipinski space (QED + Ro5)",
+      "verdict": "confirmed",
+      "evidence": "cad/virtual_triage.py:239 (return round(0.6 * qed_part + 0.4 * ro5_part, 3)); docstring line 234 \"QED + Lipinski Ro5 compliance\"; ro5_part penalty line 238 (max(0.0, 1.0 - 0.34 * ro5)); pChEMBL cap line 244 (min(pchembl, 11.0) / 11.0); non-validated disclaimer lines 228-232",
+      "correctedStatement": "The drug-likeness score linearly combines QED (0.6) with a Ro5-violation term (0.4), so Lipinski properties (MW, logP, H-bond donors/acceptors) that QED already incorporates are partly counted a second time; the 0.34-per-violation penalty and the pChEMBL/11 potency cap are hardcoded design constants, not fitted parameters, and the code explicitly labels the whole score a transparent, non-validated triage heuristic rather than an efficacy prediction.",
+      "note": "Confirmed: the math in the file matches the audit and the property overlap between QED and the separate Ro5 term is real. There is no spec being violated (SPEC MISMATCH false is correct) \u2014 it is a deliberate heuristic. Severity is partly mitigated by lines 228-232, which already disclose the weights/penalties/cap are non-validated design choices, so this is a known-and-flagged limitation rather than a hidden bug. A README note should keep that mitigation in view and avoid implying the score claims predictive validity."
+    },
+    {
+      "title": "Box center (mean of atoms) and box size (min/max extent) are computed on inconsistent bases",
+      "verdict": "confirmed",
+      "evidence": "cad/binding_site.py:81 (center = mean of coords) and cad/binding_site.py:82 (size = (max-min)+2*pad)",
+      "correctedStatement": "In cad/binding_site.py the docking-box center is the arithmetic mean of the ligand atom coordinates (line 81) while the size is derived from the (max-min) extent plus 2x padding (line 82), so the box is centered on the atom centroid rather than the bounding-box midpoint (max+min)/2 and is therefore not symmetric about the ligand's true extent; the 8 Angstrom pad normally absorbs this offset, but for a skewed atom distribution on an axis spanning more than 16 Angstrom the centroid can sit far enough from the midpoint that the box clips part of the ligand.",
+      "note": "Factual reading in the audit is accurate (center=mean at line 81, size=extent+2*pad at line 82; Vina treats the box as center +/- size/2). The reference-point inconsistency is genuine. The clipping consequence is correctly hedged: it is only possible when |mean - midpoint| > pad(8A), which mathematically requires the axis span (max-min) > 16A AND a strongly one-sided atom distribution. In practice the centroid of a real ligand is close to its midpoint and the 8A pad almost always compensates, so this is a latent design inconsistency / edge-case risk rather than a routine failure. The cited line range in the claim (8-9) refers to the docstring describing the tool's purpose; the actual computation is lines 79-83."
+    },
+    {
+      "title": "8 Angstrom per-side padding (16 Angstrom per axis) is a hardcoded constant, large for focused re-docking",
+      "verdict": "confirmed",
+      "evidence": "cad/binding_site.py:79 (pad: float = 8.0 default) and cad/binding_site.py:82 (size = (max-min) + 2*pad, i.e. +16 \u00c5/axis); fpocket/P2Rank are referenced not here but in cad/dock.py:15,162 and cad/run_pipeline.py:256",
+      "correctedStatement": "The docking box is the full co-crystal ligand min-max extent plus a fixed 8 \u00c5 padding per side (a hardcoded default, 16 \u00c5 added to every axis, so a ~10 \u00c5 ligand yields a ~26 \u00c5 box), derived solely from ligand extent rather than detected pocket geometry; this is larger than the tighter boxes typically recommended for redocking and should be narrowed or verified for focused docking runs.",
+      "note": "Confirmed on the math: pad=8.0 default (line 79) and 2*pad=16 \u00c5 added per axis (line 82). The README/CLI string at line 122 (\"ligand envelope + 8 \u00c5 padding\") is itself accurate (8 \u00c5 per side), so there is no code-vs-doc spec mismatch \u2014 the audit's point is a defensible design critique that 8 \u00c5/side is oversized for redocking, which is consistent with standard Vina guidance favoring tighter boxes. The fpocket/P2Rank references cited by the audit are in dock.py/run_pipeline.py, not in binding_site.py's docstring, but the audit's substantive claim (pad is a constant, not pocket-derived) holds."
+    },
+    {
+      "title": "Docking box ligand is the largest hetero group, not necessarily the co-crystal inhibitor",
+      "verdict": "confirmed",
+      "evidence": "cad/binding_site.py:74 (max-atoms selection); cad/binding_site.py:31-35 (IGNORE set omits glycans/cofactors/lipids); cad/run_pipeline.py:156-157 and README.md:118 (described as \"co-crystal ligand envelope\")",
+      "correctedStatement": "The docking box is centered on whichever single non-solvent hetero residue has the most atoms (cad/binding_site.py:74); since the IGNORE blocklist (lines 31-35) excludes only water, ions, and common cryo-additives \u2014 not cofactors (e.g. HEME/FAD/NAD), glycans, lipids, or detergents \u2014 on a cofactor- or additive-bound structure the box can land on a non-inhibitor group, and the tool never verifies that the chosen ligand occupies the pocket where the triaged hits would bind.",
+      "note": "Confirmed. The \"largest hetero group\" claim and the missing pocket-correspondence check are both real. One refinement: residues are grouped per (res, chain, seq) (line 69), so a multi-residue glycan tree is split into separate small groups rather than counted as one \u2014 the audit's \"sugar tree\" example is therefore unlikely to win, but a single large cofactor residue (HEME ~43 atoms, FAD ~53, NAD ~44) plausibly can outrank a small inhibitor, so the limitation stands. Note also the code already prints an inline warning at binding_site.py:124, but the README.md:118 and provenance strings (run_pipeline.py:156-157) state it as fact without the caveat."
+    },
+    {
+      "title": "'Potent activities' count applies no potency threshold",
+      "verdict": "confirmed",
+      "evidence": "cad/target_report.py:61 (query filter `pchembl_value__isnull: \"false\"` only, no pChEMBL floor); cad/target_report.py:62 (reads page_meta.total_count as record count); cad/target_report.py:11-12 (docstring \"potent measured ligands\"); cad/run_pipeline.py:143 (\"chembl_potent_activity_records\"), :179 (\"Potent ChEMBL activities\"); README.md:54",
+      "correctedStatement": "The \"ChEMBL activities\" figure is a count of ChEMBL activity records with any non-null pChEMBL value (no minimum-potency cutoff, so weak measurements down to ~pChEMBL 2 / 10 mM are included), and it counts records rather than distinct ligands, so the label \"potent\" and the phrase \"potent measured ligands\" overstate what is measured.",
+      "note": "Verified directly in the source, not from the audit text. Files are under cad/, not repo root. Line 61 applies only pchembl_value__isnull=false with no floor; line 62 returns page_meta.total_count (records, not distinct molecules). The \"potent\"/\"ligands\" wording propagates to the provenance key, SUMMARY label, and README. A defensible fix is to rename to \"ChEMBL bioactivity records (pChEMBL present)\" or apply an explicit pchembl_value__gte threshold if \"potent\" is intended."
+    },
+    {
+      "title": "Ligand triage scans an arbitrary unordered slice of ChEMBL, then calls it 'the most potent'",
+      "verdict": "confirmed",
+      "evidence": "cad/virtual_triage.py:123-131 (activity query has no order_by), :117 & :382 (while fetched < scan, --scan default 4000), :116-122 (40s budget_s breaks early with 'partial' note), :286-288 (sort by pchembl applied only to the scanned 'actives'); run_pipeline.py:151 ('ranked by a transparent potency+drug-likeness score')",
+      "correctedStatement": "Ligand triage fetches ChEMBL activities with no order_by and scans only the first --scan records (default 4000, and fewer if a 40s wall-clock budget triggers), so for targets with more than ~4000 activities (e.g. EGFR) the potency+drug-likeness ranking selects the best of an arbitrary, API-order-dependent early slice rather than the globally most potent ligands, and can vary between runs when the time budget truncates the scan.",
+      "note": "Verified by opening the actual file at cad/virtual_triage.py (audit cited a bare path; the file lives under cad/). The no-order_by, bounded-scan, and budget-truncation behaviors are all real and the README/docstring ('Pulls the experimentally measured potent ligands', 'Take the most potent molecules', 'ranked by a transparent potency+drug-likeness score') overstate this as a global ranking. One caveat: the audit's specific claim that ChEMBL's default order is 'activity_id ascending' is an external-API behavior not provable from the code, but it does not affect the core limitation since the scan is unordered with respect to potency either way."
+    },
+    {
+      "title": "Potency conflates assay types/relations and keeps the single most favorable value per molecule",
+      "verdict": "confirmed",
+      "evidence": "cad/virtual_triage.py:45 (POTENCY_TYPES = {\"IC50\",\"Ki\",\"Kd\",\"EC50\"}); :139 (stype not in POTENCY_TYPES pools all four); :147-149 (keeps max pChEMBL per molecule: if cur is None or pv > cur[\"pchembl\"]); :125-130 & :135-149 (activity query and loop apply no standard_relation/assay_type/data_validity_comment/confidence filter); :311 (best_pchembl is one measurement, not an aggregate)",
+      "correctedStatement": "Virtual triage pools IC50, Ki, Kd, and EC50 measurements into a single pChEMBL \"potency\" axis and, per molecule, retains only the maximum (most potent) value (cad/virtual_triage.py:45,139,147-149), without filtering on assay type/format, data-validity flags, or target/assay confidence, so the reported best_pchembl reflects the single most favorable assay rather than an aggregate or quality-screened potency.",
+      "note": "Real and confirmed. One sub-claim is weaker: the code does not filter standard_relation, but ChEMBL typically only assigns pchembl_value to '=' relations, so the \"censored '>' values pass\" point is likely moot in practice and not verifiable from code alone \u2014 I excluded it from the corrected statement to avoid overstating. The core issues (assay-type pooling, per-molecule max cherry-pick, no assay_type/data_validity_comment/confidence filtering) are all directly evidenced in the file."
+    },
+    {
+      "title": "'docking feasible: yes' inferred from mere existence of any PDB",
+      "verdict": "confirmed",
+      "evidence": "cad/target_report.py:93 (pdbs = all UniProt PDB xrefs, unfiltered), :99 (pdb_count=len(pdbs)), :174-176 (feasible=\"yes\" if pdb_count); cad/run_pipeline.py:175 ('yes' if pdb_count else 'no')",
+      "correctedStatement": "The dossier reports \"docking feasible: yes\" whenever a target has any deposited PDB structure (pdb_count > 0), counting all UniProt PDB cross-references indiscriminately \u2014 including apo, NMR, fragment, mutant, and partial-domain or complex-only structures \u2014 so it indicates only that some experimental structure exists, not that a dockable, ligandable pocket structure is actually available.",
+      "note": "Confirmed in both cited locations. pdbs at target_report.py:93 is built by filtering UniProt uniProtKBCrossReferences to database==\"PDB\" with no further qualification (no method, resolution, ligand, or domain-coverage check); pdb_count is its length. The \"yes\"/\"no\" feasibility flag at lines 174-176 and the SUMMARY.md line in run_pipeline.py:175 are driven purely by pdb_count > 0. No spec mismatch involved \u2014 it is a label that overstates what the underlying count establishes."
+    },
+    {
+      "title": "Best-PDB selection optimizes resolution, ignoring whether a ligand is present (holo vs apo)",
+      "verdict": "confirmed",
+      "evidence": "cad/fetch_structure.py:98-105 (pick_best_pdb ranks only by X-ray/EM preference + lowest resolution, no ligand check); cad/binding_site.py:99-103 (returns exit 1 with \"no non-solvent ligand found (apo structure?)\" when no hetero ligand); cad/run_pipeline.py:116-122 (box set to None and silently skipped when binding_site fails; pdb_id comes from the same resolution-based pick, no holo fallback)",
+      "correctedStatement": "Structure selection picks the single lowest-resolution X-ray/EM PDB for a target without checking for a bound ligand, so if that entry is apo the pipeline silently skips docking-box generation rather than searching for a co-crystallized (holo) structure of the same target.",
+      "note": "Fully confirmed against the actual files. pick_best_pdb (fetch_structure.py:98-105) sorts solely by (method-preference, resolution) and never inspects HETATM/ligand content. The pipeline (run_pipeline.py:118) feeds that single best-resolution PDB ID into binding_site.py, which (lines 99-103) returns exit 1 when largest_ligand finds no non-solvent hetero group; _run_json then yields None, leaving box=None so no binding_site.json is written and no warning beyond the captured stderr. There is no code path that enumerates other PDBs to find a holo structure. The audit's description is accurate; only minor framing note: binding_site does print an apo diagnostic to stderr, but at the pipeline level it is effectively silent since _run_json discards stderr except on the generic failure print."
+    },
+    {
+      "title": "Composite/drug-likeness score constants look like meaningful quantities",
+      "verdict": "confirmed",
+      "evidence": "cad/virtual_triage.py:244 (min(pchembl,11)/11), :238 (1.0-0.34*ro5), :239 (0.6/0.4), :247-248 (0.6/0.4 and 0.45/0.3/0.25 weights); disclaimer at :228-232",
+      "correctedStatement": "The 'score' column is a transparent, non-validated ranking heuristic that combines real ChEMBL inputs (pChEMBL, QED, Ro5 violations) using hardcoded normalization (pChEMBL capped and divided by 11) and arbitrary weights (0.6/0.4 or 0.45/0.3/0.25, with a 0.34-per-Ro5-violation penalty) chosen by design rather than fitted or benchmarked, so it orders candidates for triage but does not predict potency, efficacy, or developability.",
+      "note": "Audit is accurate. The cited constants exist exactly as described; the only discrepancy is the file path, which is cad/virtual_triage.py (not repo-root virtual_triage.py), with line numbers matching. The limitation is real but is already explicitly and honestly disclaimed in code (lines 228-232: \"a TRANSPARENT, NON-VALIDATED ranking HEURISTIC ... never a prediction of efficacy\") and in the function docstrings. No spec mismatch. The remaining risk is purely presentational: a numeric 'score' in CSV/table output can still be misread as predictive by someone who skips the code comments."
+    },
+    {
+      "title": "Target resolution differs between stages; the three lookups can describe different proteins",
+      "verdict": "confirmed",
+      "evidence": "cad/target_report.py:52-56, 79-81; cad/virtual_triage.py:81-101; cad/fetch_structure.py:55-56; cad/run_pipeline.py:137-157",
+      "correctedStatement": "The pipeline resolves the target name independently at each stage \u2014 target_report's ChEMBL lookup has no exact gene-symbol guard (cad/target_report.py:52-56) while virtual_triage's does (cad/virtual_triage.py:91-98), and the two UniProt lookups (cad/target_report.py:79-81, cad/fetch_structure.py:55-56) just take the first gene-or-protein-name match \u2014 so the dossier's activity counts, the triaged ligands, the reported UniProt accession/PDB count, and the docking-box PDB can belong to different ChEMBL/UniProt proteins for the same input (e.g. \"AKT1\"), yet the provenance manifest reports them as one target with no cross-check that the accessions agree.",
+      "note": "Verified by opening all four files (located under cad/, not repo root). The claim is fully supported and not overstated: virtual_triage's own docstring (lines 70-74) documents that the no-guard ChEMBL resolution picks substring/interactor targets (AKT1S1 for AKT1, AURKAIP1 for AURKA), and that no-guard path is exactly what target_report still uses. UniProt lookups (gene OR protein_name, size:1, results[0]) are never cross-checked against the ChEMBL target's accession, so pdb_count/activity-count/docking-box PDB can refer to distinct proteins while the manifest (run_pipeline.py:132-165) presents them as one target keyed only on the raw input string."
+    },
+    {
+      "title": "Self-consistent fabrication of potency passes the score check",
+      "verdict": "confirmed",
+      "evidence": "cad/verify.py:189-205 (recompute reads best_pchembl/qed/ro5/similarity AND saved score all from the same row r); cad/virtual_triage.py:242-248 (composite_score formula); cad/verify.py:155-180 (only SMILES, not pchembl, is independently re-pulled from ChEMBL); README.md:7",
+      "correctedStatement": "The score recompute only proves the `score` column is internally consistent with the other values in its own row; it re-pulls SMILES from ChEMBL for byte-equality but does not independently re-verify `best_pchembl`/`qed`/`ro5`, so a consistently edited or fully fabricated row (potency plus matching score) reproduces and passes \u2014 only an isolated edit of the score column is caught.",
+      "note": "Audit is accurate. The verify.py:182-184 comment (\"any drift means the score column was edited\") is literally true for isolated score edits but the README:7 phrasing \"make fabrication impossible to hide\" overstates it. The SMILES identity check (verify.py:155-180) does independently catch edited/fabricated SMILES against ChEMBL's canonical record, so fabrication is not entirely undetectable \u2014 but numeric potency/drug-likeness inputs are not re-fetched, leaving the gap the audit describes."
+    },
+    {
+      "title": "DRIFT silently blesses changed numbers and is reported as \"No fabrications\"",
+      "verdict": "confirmed",
+      "evidence": "cad/verify.py:83-85 (tol = max(2, abs(live)*0.10); abs(saved-live)<=tol -> DRIFT), cad/verify.py:413 (\"\u2705 No fabrications. {n_drift} figure(s) DRIFTed\"), cad/verify.py:418 (return 1 if n_fail else 0 \u2014 DRIFT exits 0), README.md:7 (\"make fabrication impossible to hide\")",
+      "correctedStatement": "verify.py treats any saved-vs-live figure difference within max(2 absolute, 10%) \u2014 in either direction, since the comparison is absolute-valued \u2014 as a non-failing DRIFT that exits 0 and prints \"No fabrications,\" so a figure altered within that tolerance band is not flagged as fabricated.",
+      "note": "Confirmed by reading cad/verify.py (the cited verify.py is at cad/verify.py; line numbers match within a few lines). The tolerance band is symmetric (uses abs(saved-live)), so a count going DOWN is treated the same as one growing, contradicting the \"growing DB\" justification in the docstring; DRIFT does not affect the exit code or the success banner. The README's stronger claim that fabrication is \"impossible to hide\" is overstated relative to this tolerance, but the audit's technical description is accurate."
+    },
+    {
+      "title": "\"Re-pulls every figure from its live source\" \u2014 most hits.csv figures are not re-pulled",
+      "verdict": "confirmed",
+      "evidence": "cad/verify.py:189-198 (score recompute reads best_pchembl/qed/ro5_violations/similarity from the CSV row, not from a live fetch); only SMILES is re-fetched at cad/verify.py:158-180; hits.csv columns at cad/virtual_triage.py:197-199; overstated headlines at cad/verify.py:5-7, cad/verify.py:397, README.md:35 and README.md:135",
+      "correctedStatement": "For each top ligand in hits.csv, verify.py re-pulls only the canonical SMILES live from ChEMBL (byte-equality); the potency (best_pchembl), drug-likeness (qed, ro5_violations) and similarity columns are read from the file and fed unchanged into the score recompute, while mw/alogp/hba/hbd/tpsa are not re-fetched or recomputed at all \u2014 so the recomputed score proves the column is internally consistent with its row inputs, not that those underlying figures are real (the live re-pull genuinely covers only the dossier's ChEMBL/UniProt counts and the per-ligand SMILES).",
+      "note": "Confirmed but with one important caveat the audit understates: the dossier-level counts (ChEMBL potent-activity records, known-mechanism drug count, UniProt PDB count) ARE re-pulled live (verify.py:89-132), and SMILES is independently re-fetched, so it is not true that 'only ChEMBL/UniProt counts and SMILES' is the whole story for nothing-is-verified \u2014 rather, the inaccuracy is specifically the word 'every' in the README/docstring headlines. The verify.py docstring's own 'What this DOES and does NOT prove' section (lines 15-29) already discloses this nuance accurately; the overstatement lives only in the one-line headlines (verify.py:7, the runtime banner at verify.py:397, README:35, README:135)."
+    },
+    {
+      "title": "SMILES byte-equal proves ID\u2194SMILES consistency, not that the molecule is a target hit",
+      "verdict": "partly",
+      "evidence": "cad/verify.py:158-167 (reads row's chembl_id, fetches its canonical SMILES via _chembl_canonical_smiles(cid), compares to row's saved smiles); disclosure at docs/ANTI-HALLUCINATION.md:53 (\"never that a molecule works. Triage \u2260 validation.\") and README.md:145-147",
+      "correctedStatement": "The verifier's SMILES check confirms only that each hit row's SMILES is byte-equal to ChEMBL's canonical record for that same row's ChEMBL ID \u2014 catching an edited, transposed, or invented structure string \u2014 but it does not establish that the listed compound is an actual potent ligand of the target, so a real ChEMBL molecule paired with its correct SMILES but wrong for the target would still pass.",
+      "note": "The audit's technical description of verify.py is accurate (confirmed by cad/verify.py:155-180). However, the claim that this is a README inaccuracy is overstated: the repo never asserts the byte-equal check proves a molecule is a genuine target hit, and explicitly states the opposite limitation in two places (ANTI-HALLUCINATION.md:53 \"never that a molecule works. Triage \u2260 validation.\"; README:145-147 reproducibility-not-design-correctness). \"Fabricated\" in README:35/verify.py:171 means a fabricated SMILES string for an ID, which IS detected. So the limitation is real but already disclosed; the README is not overstating it. Spec mismatch = false is correct."
+    },
+    {
+      "title": "\"byte-equal to ChEMBL\" reads the same canonical_smiles field the pipeline read \u2014 not a fully orthogonal source",
+      "verdict": "partly",
+      "evidence": "cad/verify.py:68-72 (returns molecule_structures.canonical_smiles via raw HTTP) vs cad/virtual_triage.py (\"smiles\": structs.get(\"canonical_smiles\") in fetch_molecule_properties)",
+      "correctedStatement": "The SMILES check re-fetches the same molecule_structures.canonical_smiles field from the same ChEMBL database over a separate raw-HTTP code path, so it proves hits.csv faithfully copied ChEMBL's canonical record (catching edited or transposed SMILES) but is not an independent measurement of the molecule from a different data source.",
+      "note": "The audit's underlying fact is confirmed: verify.py:72 and virtual_triage.py both read molecule_structures.canonical_smiles from ChEMBL, so the check is byte-fidelity to ChEMBL's record, not an orthogonal structure measurement. But the audit's framing that the docs overstate independence is overstated itself: the docs already scope \"independent\" to mean a separate code path, not a separate source. verify.py:57-59 says it is \"genuinely independent of how the run was produced\"; verify.py:20-22 says it catches \"an edited/transposed SMILES\"; README:35 says \"byte-equal to ChEMBL (raw HTTP, separate code path).\" None claim an orthogonal data source. Hence partly: technically accurate observation, but it does not contradict the README as written."
+    },
+    {
+      "title": "\"potent_activity_records\" counts any pchembl-non-null activity, regardless of potency or assay type",
+      "verdict": "confirmed",
+      "evidence": "cad/target_report.py:61 (query: only pchembl_value__isnull=false), :75 (field named \"potent_activity_records\"), :187 (printed as \"Potent measured activities on record\"); contrast cad/virtual_triage.py:45,139,145 (POTENCY_TYPES + min_pchembl default 6.0); cad/verify.py:16-19 (\"A wrong-but-stable query would pass\") and :108-111 (re-runs identical chembl_snapshot)",
+      "correctedStatement": "The target dossier's \"potent_activity_records\" / \"Potent measured activities on record\" figure (cad/target_report.py:61,75,187) is just a raw ChEMBL count of every activity with a non-null pchembl_value for the target \u2014 it applies no minimum-pChEMBL threshold, no IC50/Ki/Kd/EC50 standard_type filter, and no assay-confidence filter, so it includes weak and non-binding-assay records and the word \"potent\" is unjustified; this is inconsistent with the repo's own triage stage (cad/virtual_triage.py), which does enforce min_pchembl and POTENCY_TYPES, and verify.py re-runs the identical query, so it confirms the number is reproducible but not that it actually measures potency.",
+      "note": "Audit confirmed against the actual files. Minor nuance: a non-null pchembl_value is itself a mild implicit filter (ChEMBL only assigns one to -log-transformable concentration endpoints), and pChEMBL ~1 is rare rather than typical, so the \"weak (pChEMBL ~1)\" example is illustrative; the core defect \u2014 no potency threshold and no standard_type filter behind a \"potent\" label, contradicting the repo's own triage definition \u2014 is fully accurate. verify.py honestly self-discloses the reproducibility-vs-correctness gap at lines 16-19, so it does not silently give false confidence, but it does re-run the same mislabeled query."
+    },
+    {
+      "title": "provenance.py only validates the origin label string, not the value's true source",
+      "verdict": "partly",
+      "evidence": "cad/provenance.py:93-98 (Figure.__post_init__ checks only that origin is in (FETCHED, COMPUTED)); cad/provenance.py:108-113 (Manifest.fetched/computed accept an arbitrary value:object with a caller-chosen label); README.md:34",
+      "correctedStatement": "provenance.py enforces only that each figure's `origin` is the string `fetched` or `computed`, raising on anything else (including `model`); it does not verify that the recorded value actually came from the named source, so the no-model-figures rule depends on callers stamping honest labels rather than on a code-level guarantee.",
+      "note": "The README's literal claim (\"cannot record a value whose origin is 'model' \u2014 it raises\", README.md:34) is technically TRUE: passing origin='model' does raise ValueError at cad/provenance.py:94-98. So the audit's framing (\"does NOT make a model origin impossible\") is partly overstated as a refutation of the literal text. However, the audit's core technical observation is correct and the README's surrounding guarantee (\"Every reported figure is tagged fetched/computed, with its source\") overstates enforcement strength: the check is a label-honesty check only. Nothing binds `value` (typed `object`) to the cited `source`, so a model-produced number passed via manifest.fetched(name, model_value, 'chembl', url) is accepted without error. Hence \"partly\": the literal sentence is defensible, but the implied guarantee is stronger than the code provides. Note also that the module docstring (cad/provenance.py:10-15) already concedes the guarantee is about honest labeling/re-verifiability, not runtime enforcement of value origin."
+    },
+    {
+      "title": "Manifest is never verified against the artifacts it describes",
+      "verdict": "confirmed",
+      "evidence": "cad/verify.py:343-383 (run() reads dossier.json, hits.csv, liabilities.json, binding_site.json, cost_benefit.json but not provenance.json); verify.py:51 imports provenance only for source_url(); manifest written at cad/run_pipeline.py:165 -> cad/provenance.py:129",
+      "correctedStatement": "verify.py re-pulls and recomputes the underlying figures directly from live sources and the run artifacts (dossier.json, hits.csv, cost_benefit.json, etc.), but it never reads provenance.json, so the manifest's recorded values and origins are not cross-checked against the artifacts and a manifest edited in isolation would not trigger a FAIL.",
+      "note": "Real limitation but do not overstate: the same figures ARE independently re-verified by verify.py from live sources plus deterministic recompute, and cad/provenance.py raises at write time if a figure's origin would be \"model\". The gap is narrowly that the provenance.json file itself sits outside verify's reproof loop."
+    },
+    {
+      "title": "cost-benefit \"reproduces exactly\" only validates internal consistency, not the inputs or priors",
+      "verdict": "confirmed",
+      "evidence": "cad/verify.py:216-221 (recomputes from saved assumptions block) and cad/verify.py:235-237 (prints \"all figures reproduce exactly from stated assumptions\" PASS); cad/cost_benefit.py:36-41 and :54,:68 (LOA priors and oncology factor are hardcoded heuristics, none fetched from the cited DOI); cad/run_pipeline.py:159-161 (cites the source URL only as a label).",
+      "correctedStatement": "The cost-benefit PASS only confirms the saved outputs are a deterministic recomputation of the saved assumptions (a tamper check); it does not verify those assumptions (incidence, price, penetration, years) nor that the hardcoded per-phase success priors in cad/cost_benefit.py match the cited BIO/Informa source, so fabricated-but-self-consistent inputs still pass.",
+      "note": "Audit confirmed against actual files (located under cad/, not repo root). The verify step re-runs cost_benefit.analyze() on the saved assumptions and compares outputs; the priors LOA_FROM_PHASE (cost_benefit.py:36-41) and ONCOLOGY_LOA_FACTOR (:68) are hardcoded literals explicitly commented as \"rough\"/\"HEURISTIC, not fetched data\"/\"editable\", and prov.source_url(...) supplies only a citation string, never a fetched value to check against. No spec mismatch."
+    },
+    {
+      "title": "Only the first 5 hits (and 25 liabilities) are verified",
+      "verdict": "confirmed",
+      "evidence": "cad/verify.py:142-147, 270-290",
+      "correctedStatement": "The independent verifier only re-checks the top 5 ranked ligands in hits.csv (SMILES byte-equality vs ChEMBL and triage-score recompute) and the first 25 entries in liabilities.json (PAINS/Brenk recompute); any rows beyond those fixed caps are never verified, so a fabricated or edited row past the cap would pass unnoticed.",
+      "note": "Confirmed against the real file. The audit cited the path as bare verify.py; the actual file is cad/verify.py and the line numbers match exactly. Both verify functions slice their input to the default max_rows (5 for hits, 25 for liabilities), and the only callers (lines 362 and 366) do not override the defaults, so the caps are in force in practice. The caps are parameterizable defaults, not hard-coded constants, but nothing raises them."
+    },
+    {
+      "title": "'clean' label ignores Brenk structural alerts",
+      "verdict": "confirmed",
+      "evidence": "cad/cheminformatics.py:113; web/public/data/cheminformatics/BRAF.json:9-21",
+      "correctedStatement": "The `clean` flag means a compound passes Lipinski Ro5, Veber, and has zero PAINS alerts only; Brenk structural alerts are computed and reported but excluded from the flag, so a compound with Brenk alerts can still be labeled clean (175 committed entries are clean:true with brenkAlerts>0, e.g. BRAF CHEMBL500659 with brenkAlerts=3).",
+      "note": "Verified directly. Line 113 defines clean = ro5 and veber and len(pains_hits) == 0; brenk_hits are calculated (line 98) and emitted as brenk_alerts (line 111) but never gate clean. The module docstring (line 10) advertises 'structural-alert screening (PAINS, Brenk)'. A script over all web/public/data/cheminformatics/*.json found 175 entries with brenkAlerts>0 and clean:true, corroborating the cited BRAF and ERBB2 examples."
+    },
+    {
+      "title": "SKIP/unresolved paths convert un-checkable figures into a non-FAIL",
+      "verdict": "partly",
+      "evidence": "verify.py:252-253 (binding box: any fetch/parse Exception -> SKIP), verify.py:279-282 (liabilities: RDKit absent -> SKIP), verify.py:385 & 394 (n_fail counts only FAIL; SKIP excluded; exit 1 only if n_fail), verify.py:173-180 (SMILES: total unresolve -> FAIL, partial -> PASS with silent \"(N unresolved, skipped)\"), verify.py:80 (count checks: live is None -> FAIL)",
+      "correctedStatement": "The two deterministic recompute checks \u2014 liabilities.json (when RDKit is absent, verify.py:279-282) and the docking box (on any RCSB fetch/parse error, verify.py:252-253) \u2014 emit SKIP rather than FAIL, and because SKIP triggers neither the non-zero exit code nor a qualified banner (verify.py:385,394,415), an edited liabilities.json or binding_site.json can pass unverified in an environment lacking RDKit or with the PDB fetch blocked; the ChEMBL/UniProt count checks (verify.py:80) and the SMILES identity check (verify.py:173-175) do fail closed (FAIL) on total source unavailability, so the gap is limited to those two deterministic checks plus individually-unresolved SMILES rows that are silently dropped within an otherwise-PASS.",
+      "note": "Core claim is real for the two deterministic recompute checks: missing RDKit or a blocked PDB fetch downgrades a genuine integrity check to SKIP, which does not count toward n_fail (line 385/394) and does not qualify the \"Every reported figure reproduced exactly\" banner (line 415) \u2014 only the no-target-evidence case (408-411) qualifies the banner. However the audit overstates: (1) the SMILES check (cited 173-178) does NOT fail open \u2014 total unresolution FAILs (line 173-175) and only a specifically-unresolvable individual row is silently skipped while the check still PASSes; an attacker would need to make exactly the edited row's ChEMBL fetch fail while others succeed, a much narrower attack than \"make the network fail.\" (2) The ChEMBL/UniProt count checks fail closed (line 80, FAIL when live is None), so \"downgrades real checks to SKIP\" does not apply to the whole suite \u2014 only the liabilities and binding-box recompute checks genuinely fail open."
+    },
+    {
+      "title": "Veber rule omits the HBD+HBA<=12 alternative clause",
+      "verdict": "confirmed",
+      "evidence": "cad/cheminformatics.py:91 (veber = rotb <= 10 and tpsa <= 140), exposed as \"veber_ok\" at line 108; hbd/hba computed at lines 80-81 but unused in the rule.",
+      "correctedStatement": "The veber_ok flag implements only the TPSA branch of the Veber 2002 oral-bioavailability rule (rotatable bonds <=10 and TPSA <=140) and omits the alternative H-bond clause (HBD+HBA <=12), so a molecule with TPSA >140 but <=12 total H-bond donors+acceptors is reported as failing Veber when the full rule would pass it.",
+      "note": "Real, accurately described inaccuracy. It is a widely used simplification (PSA-only Veber), but the original paper does offer the HBD+HBA<=12 alternative, and the code has hbd/hba in hand yet does not use them, so molecules with high TPSA but low H-bond count are misclassified as fails."
+    },
+    {
+      "title": "Egan rule is a rectangular approximation of an ellipsoidal absorption model",
+      "verdict": "confirmed",
+      "evidence": "cad/cheminformatics.py:92 (egan = tpsa <= 131.6 and logp <= 5.88); logp source at cad/cheminformatics.py:78 (Crippen.MolLogP); tpsa at line 79 (CalcTPSA)",
+      "correctedStatement": "The egan_ok flag is a rectangular approximation of the Egan/Merz 2000 absorption model: instead of the original confidence ellipse in PSA vs. AlogP98 space, it applies two independent axis-bound cutoffs (TPSA <= 131.6 and MolLogP <= 5.88) using RDKit's Crippen MolLogP as a stand-in for AlogP98, so compounds near the ellipse corners can be classified differently than the true Egan \"egg\".",
+      "note": "Confirmed against the actual file. Line 92 uses a simple AND of two thresholds (a bounding box), not the elliptical boundary defined by Egan, Merz & Baldwin (J Med Chem 2000). The 131.6 / 5.88 values correspond to the egg's axis extremes, and the code feeds Crippen MolLogP (line 78) where the published model uses AlogP98, so descriptor and geometry both differ from the source. Practically the deviation is limited to a thin region near the ellipse corners; the rectangle is permissive (any point inside the ellipse is also inside the box, but the corners of the box are outside the ellipse), so the only misclassifications are false-positives near the corners, which keeps the statement from being overstated."
+    },
+    {
+      "title": "PAINS/Brenk arrays truncated to 5 while count is full",
+      "verdict": "confirmed",
+      "evidence": "cad/cheminformatics.py:110-111 (\"pains_alerts\": len(pains_hits), \"pains\": pains_hits[:5]; \"brenk_alerts\": len(brenk_hits), \"brenk\": brenk_hits[:5]) and cad/precompute_site_data.py:102-103 (\"painsAlerts\": a[\"pains_alerts\"], \"pains\": a[\"pains\"]; \"brenkAlerts\": a[\"brenk_alerts\"], \"brenk\": a[\"brenk\"])",
+      "correctedStatement": "The JSON pains and brenk arrays are capped at the first 5 matched structural alerts (pains_hits[:5] / brenk_hits[:5]), so for a compound with more than 5 alerts the listed names are fewer than the true total reported in painsAlerts/brenkAlerts.",
+      "note": "Verified directly in both cited files. In cheminformatics.py the analyze() return slices the hit lists to [:5] while the *_alerts fields store the full len(); precompute_site_data.py passes these through unchanged into painsAlerts/pains and brenkAlerts/brenk. The count fields are the full true count and the list fields are truncated, exactly as the audit claims. Not a spec mismatch \u2014 no doc promises a complete list \u2014 just a silent truncation that can make the array shorter than the count."
+    },
+    {
+      "title": "\"Best\" PDB ignores sequence coverage / which domain is resolved",
+      "verdict": "confirmed",
+      "evidence": "cad/fetch_structure.py:65-72 (props parsed from xref keep only Method/Resolution, no \"Chains\"/coverage range), and cad/fetch_structure.py:102-105 (rank = (method-preference tier, resolution) only); docstrings at lines 9-11 and 99 call this the \"best experimental structure\".",
+      "correctedStatement": "The structure picker selects a PDB entry solely by experimental method (X-ray/EM preferred) and resolution, ignoring the UniProt-reported chain coverage range, so it can return a high-resolution structure of an isolated domain or short fragment that omits the druggable site rather than a more complete or more relevant structure.",
+      "note": "Verified directly in the file. resolve_uniprot (lines 62-72) constructs props from the PDB cross-reference's properties but only captures Method and Resolution; the UniProt PDB xref also carries a \"Chains\" property encoding the resolved residue range, which is never read. pick_best_pdb (lines 98-105) ranks by (method tier, _res_num) with no coverage or length term. The same omission is duplicated in the --uniprot branch (lines 135-145). SPEC MISMATCH = false is correct; this is a design limitation, not a contradiction of a stated spec \u2014 the docstrings honestly disclose the criterion is \"best resolution\", but the word \"best experimental structure\" overstates suitability for docking."
+    },
+    {
+      "title": "Committed JSON is a non-reproducible live-ChEMBL snapshot; precompute can serve stale per-target data while index date advances",
+      "verdict": "confirmed",
+      "evidence": "cad/precompute_site_data.py:88-89,130,158 and cad/virtual_triage.py:60-62",
+      "correctedStatement": "The committed cheminformatics JSON is not a reproducible artifact: although each molecule's descriptors are deterministic from its SMILES, the compound set is pulled live (uncached, with a wall-clock budget that can truncate results) from ChEMBL by virtual_triage.py, so re-running on a later date can return different molecules; and because a target whose triage fails is skipped via `continue` (leaving its old per-target file in place) while the merge-by-slug guard keeps its stale index entry, index.json's top-level `generated` stamp is rewritten to the new run's date and can therefore advertise a freshness that some per-target files do not actually have.",
+      "note": "Fully confirmed by reading both files. (1) Live, uncached ChEMBL query: virtual_triage.py:60-62 uses urllib.request.urlopen against https://www.ebi.ac.uk/chembl/api/data with no caching, and lines 108-120 cap the scan with a time budget that can yield partial/varying results even against unchanged data. (2) Failure path leaves stale per-target file: precompute_site_data.py:88-89 `if not data: continue` skips the write at :134, so the previously committed <TARGET>.json (carrying its own older \"generated\" stamp from :130) remains. (3) Never-shrink index merge: :147-156 merges existing index entries by slug, preserving the stale target's entry. (4) Index date advances regardless: :158 writes {\"generated\": args.stamp, ...}, so the top-level date is always the current run's stamp even when underlying per-target files were not refreshed. The only minor caveat is that args.stamp (:70) is operator-supplied to avoid nondeterministic clocks, but that controls the recorded date, not the compound-set reproducibility, so it does not weaken the claim."
+    },
+    {
+      "title": "AlphaFold pLDDT confidence is claimed-needed but never read",
+      "verdict": "confirmed",
+      "evidence": "cad/fetch_structure.py:158-171 (AlphaFold fallback downloads + reports unconditionally); cad/fetch_structure.py:170 is the sole occurrence of \"pLDDT\", a literal note string; grep across cad/ finds no pLDDT/B-factor parsing.",
+      "correctedStatement": "When no experimental PDB exists, fetch_structure.py downloads the AlphaFold predicted model and reports it identically regardless of quality; it never parses or thresholds the per-residue pLDDT confidence, so the \"validate confidence (pLDDT) before docking\" note is purely an advisory string left for the human to act on, not an automated check.",
+      "note": "Confirmed. The AlphaFold branch calls _download then _report with a static note; no code reads the B-factor/pLDDT column or conditions the docking handoff on it. The note is honest advice rather than an implemented gate, so a low-confidence model is treated the same as a high-confidence one."
+    },
+    {
+      "title": "saScore would silently vanish on refresh in a Contrib-less RDKit, changing JSON schema",
+      "verdict": "confirmed",
+      "evidence": "cad/precompute_site_data.py:111 (entry[\"saScore\"] added only if a.get(\"sa_score\") is not None); cad/cheminformatics.py:54-56 (_HAS_SASCORE=False on import failure) and :100 (sa_score=None when not _HAS_SASCORE); all 38 per-compound files in web/public/data/cheminformatics/*.json contain saScore (only index.json, an index, lacks it).",
+      "correctedStatement": "The per-compound saScore field is emitted only when RDKit's optional Contrib SA_Score tree is installed; regenerating the cheminformatics data on an RDKit build that lacks it would silently omit saScore from every entry, producing a schema that differs from the 38 committed data files which all include it.",
+      "note": "Real and accurately described. saScore is conditionally added (precompute_site_data.py:111), and sa_score falls back to None when the SA_Score Contrib import fails (cheminformatics.py:54-56,100). The omission is silent (no error, field dropped rather than set to null). All 38 actual data files carry saScore; index.json is just an index and is not a counterexample."
+    },
+    {
+      "title": "No apo/holo, mutant, or construct filtering \u2014 can select an unsuitable structure",
+      "verdict": "confirmed",
+      "evidence": "cad/fetch_structure.py:98-105 (pick_best_pdb ranks only on method preference + resolution; resolve_uniprot at :56 fetches only accession,xref_pdb so no mutation/ligand data is consulted); cad/binding_site.py:53-76 (largest_ligand is a HETATM-vs-IGNORE-set heuristic) and :100-103 (apo case returns an error rather than a box)",
+      "correctedStatement": "Structure selection chooses the best PDB purely by experimental method and resolution, with no check of mutation status (e.g. EGFR T790M or kinase-dead variants), apo/holo state, or chimeric/engineered constructs, so a catalytically-dead or non-physiological structure can be picked; binding_site.py then errors out on a truly apo entry but can still draw a box around a non-solvent additive not in its fixed IGNORE list.",
+      "note": "Confirmed as a real limitation. Minor overstatement in the audit: binding_site.py does not silently \"derive no box\" for apo structures \u2014 largest_ligand returns None and the tool prints \"no non-solvent ligand found (apo structure?)\" and exits non-zero (binding_site.py:100-103). The \"box around a crystallisation additive\" only occurs when an additive is absent from the hard-coded IGNORE set (lines 31-35) and is the largest hetero group. The mutant/construct selection gap is entirely unmitigated. Note the README/docstring claim is a paraphrase: the actual docstring (fetch_structure.py:5-11) promises coordinates for downstream work, not an explicit suitability guarantee."
+    },
+    {
+      "title": "Gene\u2192UniProt resolution takes top relevance hit (size=1) \u2014 can fetch the wrong protein",
+      "verdict": "confirmed",
+      "evidence": "cad/fetch_structure.py:55-60 \u2014 q = f\"(gene:{name} OR protein_name:{name}) AND organism_id:9606 AND reviewed:true\"; urlencode(... 'size': 1 ...); results = _get_json(url).get(\"results\", []); e = results[0]",
+      "correctedStatement": "resolve_uniprot() resolves a gene/target name by submitting a fuzzy UniProt search over both the gene and protein_name fields, requesting only the single top-ranked reviewed human hit (size=1) and using results[0] with no check that the returned entry's gene symbol exactly matches the input, so an ambiguous, short, or substring-matching name can silently resolve to the wrong protein and propagate that error through the entire structure/box/dock chain.",
+      "note": "Verified by opening the file directly. The query uses UniProt's gene:/protein_name: token search (not exact-match operators like gene_exact:), size is hard-coded to 1, and results[0] is consumed unconditionally \u2014 there is no post-filter comparing the entry's gene name to the requested symbol. The audit's characterization is accurate, including the absence of exact-symbol verification and the downstream propagation risk. SPEC MISMATCH = false is also correct: the docstring on line 53-54 promises 'a reviewed human UniProt entry' which it does return; the issue is correctness/precision of which entry, not a contradiction with the stated spec."
+    },
+    {
+      "title": "Blind-box fallback uses `--autobox`, unsupported by upstream AutoDock Vina",
+      "verdict": "confirmed",
+      "evidence": "cad/dock.py:163 (cmd += [\"--autobox\"]) in the no-center branch (lines 160-163); install target is ccsb-scripps/AutoDock-Vina at cad/dock.py:46; docstring promises blind box at cad/dock.py:14-16",
+      "correctedStatement": "The \"omit --center for a blind box\" fallback (cad/dock.py:160-163) invokes `vina ... --autobox`, but upstream AutoDock Vina (the ccsb-scripps build the wrapper tells users to install) has no `--autobox` option, so this path errors out instead of performing blind docking; an explicit --center/--size (or --box-json) box is effectively required.",
+      "note": "Real spec mismatch. Upstream AutoDock Vina accepts center_x/y/z + size_x/y/z (or a --config file) and exposes no auto-box flag; automatic box sizing is a smina/gnina feature (and even there the flag is `--autobox_ligand`, not bare `--autobox`). Since cad/dock.py:40-46 directs users to conda `vina` or the ccsb-scripps release binary, the no-center branch will fail with an unrecognized-option/usage error at line 167-168 rather than docking over the whole receptor. The fix is to compute a center/size from the receptor's coordinates (or require --center) instead of passing --autobox."
+    },
+    {
+      "title": "Pipeline labels docking 'feasible' from PDB count alone",
+      "verdict": "confirmed",
+      "evidence": "cad/run_pipeline.py:175 (\"docking feasible: {'yes' if u.get('pdb_count') else 'no'}\"); pdb_count defined as len(all UniProt PDB cross-references) at cad/target_report.py:93,99; same truthiness logic at cad/target_report.py:174",
+      "correctedStatement": "The SUMMARY/dossier \"docking feasible: yes/no\" flag is set solely by whether the target's UniProt record lists at least one PDB cross-reference (pdb_count > 0); it does not verify that any structure is holo, covers the relevant domain/binding site, or has a definable pocket, so a target with only an apo or wrong-domain PDB is still reported as \"docking feasible: yes\".",
+      "note": "Verified against the actual files, not the audit. cad/target_report.py:93 collects every uniProtKBCrossReferences entry with database==\"PDB\" and stores the raw count as pdb_count (line 99). run_pipeline.py:175 emits \"yes\" whenever that count is truthy. There is no holo/apo, domain-coverage, or pocket-detection check anywhere in this decision; the binding-box/pocket work in cad/binding_site.py is a separate downstream step and does not gate this label. Audit is accurate; spec-mismatch is correctly marked false (this is an accuracy/overstatement issue, not a documented-spec deviation)."
+    },
+    {
+      "title": "AlphaFold fetch only ever gets fragment F1 \u2014 truncates large proteins",
+      "verdict": "confirmed",
+      "evidence": "cad/fetch_structure.py:88 (probe URL hardcoded `AF-{acc}-F1-model_v{v}.pdb`), :162 (output filename hardcoded `AF-{acc}-F1.pdb`), :83-84 (API path returns only `data[0][\"pdbUrl\"]`, the first fragment)",
+      "correctedStatement": "AlphaFold-fallback structures are limited to the first fragment: the probe URL and output filename are hardcoded to \"-F1\" and the API path uses only the first prediction entry (data[0]), so for proteins longer than AlphaFold's ~2,700-residue per-model limit (which AlphaFold DB splits into F1, F2, \u2026 fragments) only the F1 fragment is downloaded, silently yielding a partial structure for very large targets.",
+      "note": "Verified against the actual file. The core inaccuracy is real and present in all three AlphaFold paths \u2014 only the first fragment is ever fetched, and the saved file is always named F1 regardless of source. Minor imprecision in the audit: the API-derived URL (line 84) is not literally hardcoded to '-F1-' (it is taken from the API's pdbUrl), but since the code reads only data[0] it still resolves to the first fragment, so the truncation conclusion stands. Note this only affects the AlphaFold fallback path; targets resolved to an experimental RCSB PDB entry are unaffected."
+    }
+  ]
+}
