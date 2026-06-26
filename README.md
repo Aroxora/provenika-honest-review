@@ -162,10 +162,13 @@ The private codebase is under active remediation. As of this review:
 - ✅ **Cost-benefit JSON key renamed** — `risk_adjusted_revenue_musd` → `risk_adjusted_gross_profit_musd`, every
   reader (verifier, SUMMARY) updated in lockstep; the verifier gate stays green. The committed `/explore` data
   has been **regenerated** so all 38 targets match the fixed cheminformatics rules and potency-ordered triage.
-- ⏳ **In progress:** **holo-aware structure selection** — the coverage-aware pick can land on an *apo*
-  structure (e.g. EGFR now resolves to apo 4UV7), so a preference for a ligand-bound structure on the docking
-  path is being added; and a **deeper verifier pass** (re-pulling more hit columns + cross-checking
-  `provenance.json`).
+- ✅ **Holo-aware structure selection + full cross-stage resolution** — `pick_structure` now probes the top
+  candidates and prefers a ligand-bound (holo) entry for the docking path (flagging apo when none is found),
+  and `resolve_uniprot` gained the same exact gene-symbol guard the other stages have, so all three stages
+  resolve the same protein. *(Honest nuance: for a target whose holo structures are low-coverage kinase-domain
+  entries, the coverage preference can still surface an apo full-length structure — correctly flagged apo.)*
+- ✅ **The verifier now reads `provenance.json`** — `verify_manifest` cross-checks the manifest's figures
+  against the artifacts (origins re-validated; values mirror-checked), so a manifest edited in isolation FAILs.
 
 **Nearly every concrete downfall this review documents has now been fixed** — see the commit history of the
 (private) codebase. What remains is either actively in progress (above) or inherent: a triage tool cannot

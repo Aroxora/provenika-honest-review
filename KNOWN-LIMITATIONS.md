@@ -49,23 +49,25 @@ This is the category the project most needs to confront: numbers that are *compu
   pChEMBL axis and only the single *maximum* value per molecule is kept, with no assay-type/validity/confidence
   filter. *(`cad/virtual_triage.py`.)* **Documented:** the docstring now states the pooling + most-favorable
   selection plainly; the pooling itself is unchanged (a deliberate triage simplification).
-- ◐ 🔴 **Target resolution differed across stages — the lookups could describe different proteins.**
-  `target_report`'s ChEMBL lookup had no exact gene-symbol guard while `virtual_triage` did, so "AKT1" could
-  resolve to AKT1S1 in the dossier. *(`cad/target_report.py`, `virtual_triage.py`, `fetch_structure.py`.)*
-  **Fixed (ChEMBL side):** `target_report` now uses the same exact gene-symbol guard. **Still open:** the
-  UniProt lookups still take the top fuzzy hit (next item), and the manifest does not cross-check accessions.
-- ⏳ 🟠 **Gene→UniProt takes the top relevance hit with no exact-symbol check.** A short/ambiguous/substring name
-  can silently resolve to the wrong UniProt entry. *(`cad/fetch_structure.py`.)* (The ChEMBL-side guard above
-  reduces, but does not eliminate, the cross-stage risk; the UniProt path is still top-hit.)
+- ✅ 🔴 **Target resolution differed across stages — the lookups could describe different proteins.**
+  "AKT1" could resolve to AKT1S1 in the dossier. *(`cad/target_report.py`, `virtual_triage.py`,
+  `fetch_structure.py`.)* **Fixed on all three:** `target_report` (ChEMBL) and `fetch_structure` (UniProt) now
+  apply the SAME exact gene-symbol guard `virtual_triage` had; and the verifier now cross-checks the UniProt
+  accession recorded in the manifest against the dossier (see §3), so a cross-stage mismatch is caught.
+- ✅ 🟠 **Gene→UniProt took the top relevance hit with no exact-symbol check.** *(`cad/fetch_structure.py`.)*
+  **Fixed:** `resolve_uniprot` requests `gene_primary` (size 5) and prefers the entry whose primary gene symbol
+  exactly matches the query, falling back to the first hit only when none match.
 - ✅ 🔴 **"Docking feasible: yes" was inferred from the existence of any PDB.** `pdb_count > 0` counted all PDB
   cross-references (apo, NMR, fragment, mutant) so it meant only that *some* structure exists.
   *(`cad/target_report.py`, `run_pipeline.py`.)* **Fixed:** relabelled "structures exist — confirm one is holo
   and covers the site (not auto-checked)" in both the dossier and the SUMMARY.
 - ◐ 🟠 **"Best" PDB optimized resolution only — ignored coverage, domain, apo/holo, mutation.** Could return a
   high-resolution structure of the wrong domain, an apo form, or a point mutant with no flag.
-  *(`cad/fetch_structure.py`.)* **Partly fixed:** `pick_best_pdb` is now **coverage-aware** (prefers
-  structures spanning ≥50% of the protein over domain fragments) and reports coverage + a caveat. **Still
-  open:** apo/holo and mutation status are not checked (now stated explicitly rather than silently).
+  *(`cad/fetch_structure.py`.)* **Mostly fixed:** selection is now **coverage-aware** (prefers structures
+  spanning ≥50% of the protein over fragments) AND **holo-aware** for the docking path — `pick_structure`
+  probes the top candidates and prefers one with a bound ligand, so the box step isn't handed an apo entry
+  (and flags apo when no holo is found). **Inherent residue:** mutation/construct identity still can't be
+  auto-confirmed without lab context — now stated explicitly.
 - ✅ 🟠 **AlphaFold fallback never read pLDDT and only fetched fragment F1.** A low-confidence or truncated
   predicted model was handed off identically to a good one. *(`cad/fetch_structure.py`.)* **Fixed:** the
   AlphaFold path now reads mean/percent-confident **pLDDT** (B-factor column) and states only fragment F1 is
@@ -151,8 +153,11 @@ are stronger than the code delivers.
   binds the value to the cited source — a model-produced number passed as `manifest.fetched(...)` is accepted.
   The "no value originates from a model" guarantee is a labeling convention, not enforcement. *(partly.)*
   *(`cad/provenance.py:93-98,108-113`; `README.md:34`.)*
-- ⏳ 🟡 **The manifest is never verified against the artifacts.** `verify.py` re-checks the underlying figures but
-  never reads `provenance.json`, so a manifest edited in isolation would not FAIL. *(`cad/verify.py:343-383`.)*
+- ✅ 🟡 **The manifest was never verified against the artifacts.** `verify.py` imported provenance only for URLs
+  and never read `provenance.json` back. *(`cad/verify.py`.)* **Fixed:** new `verify_manifest` re-validates every
+  figure's origin (an illegal `model` origin FAILs) and cross-checks the figures that mirror an artifact value
+  (UniProt accession, PDB/activity/drug counts, P(approval), benefit/cost, docking box) against
+  dossier/cost_benefit/binding_site — FAIL on any disagreement. Offline-tested.
 - ⏳ 🟡 **cost-benefit "reproduces exactly" only checks internal consistency.** It recomputes from the saved
   assumptions; it does not verify those assumptions or that the hardcoded priors match the cited source.
   *(`cad/verify.py:216-221`.)*
