@@ -123,6 +123,9 @@ The private codebase is under active remediation. As of this review:
 - ✅ **Docking blind-box no longer passes `--autobox`** — stock AutoDock Vina has no auto-box mode, so the
   no-`--center` path now builds a real whole-receptor box and passes explicit `--center/--size`, instead of
   erroring out. *(Tested, committed.)*
+- ✅ **Structure fetch now handles mmCIF** — many modern/large PDB entries have no legacy `.pdb` file, so the
+  docking-box stage used to silently 404 on them; it now falls back to `.cif` and parses the mmCIF atom loop.
+  *(Tested, committed.)*
 - ✅ **A validation *harness* now exists** (`cad/validate.py`) — redocking pose-RMSD (≤2 Å = correct) plus
   retrospective enrichment (ROC AUC / EF), so the pipeline's accuracy can be **measured**, not asserted. The
   metric math is offline-tested in CI. **Important honesty caveat:** a harness is not a result — the pipeline
