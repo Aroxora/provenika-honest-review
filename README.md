@@ -123,9 +123,28 @@ The private codebase is under active remediation. As of this review:
 - ✅ **Docking blind-box no longer passes `--autobox`** — stock AutoDock Vina has no auto-box mode, so the
   no-`--center` path now builds a real whole-receptor box and passes explicit `--center/--size`, instead of
   erroring out. *(Tested, committed.)*
+- ✅ **A validation *harness* now exists** (`cad/validate.py`) — redocking pose-RMSD (≤2 Å = correct) plus
+  retrospective enrichment (ROC AUC / EF), so the pipeline's accuracy can be **measured**, not asserted. The
+  metric math is offline-tested in CI. **Important honesty caveat:** a harness is not a result — the pipeline
+  remains **unvalidated** until those benchmarks are actually run (the docking step needs Vina/Open Babel).
+  Building the measurement is the honest first step toward "validated," nothing more.
 - ⏳ **Open:** the remaining items above — see [`KNOWN-LIMITATIONS.md`](KNOWN-LIMITATIONS.md) for the
   prioritized queue (`.cif`-only structure fetch, holo/coverage-aware structure selection, feasibility-verdict
   labeling, verifier-scope honesty, `clean`/Veber fidelity, and the doc reconciliation).
+
+## On "validation" and "clinical use"
+
+Two questions worth answering plainly, because they are easy to conflate:
+
+- **"Is it validated?"** Validation is *measured evidence*, not a badge. The new harness lets you produce
+  that evidence (redocking RMSD, enrichment); until those benchmarks are run and reported, the honest answer
+  stays **no — it is unvalidated**. Reproducing known answers would earn cautious trust in *triage*, never
+  proof of a prospective or clinical result.
+- **"Can it be used clinically?"** **No, and it should not be.** Software that informs diagnosis, prognosis,
+  or treatment is a regulated medical device (FDA SaMD / EU MDR) requiring clinical-validation studies, a
+  quality system, and clearance — not a code change. This tool stays a research/triage aid; a CI medical-
+  safety audit fails the build on any clinical output. A *molecule* it helps surface can reach patients only
+  through the full wet-lab → preclinical → IND → trials → approval pipeline, none of which this repo performs.
 
 ---
 
