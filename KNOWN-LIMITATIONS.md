@@ -126,29 +126,26 @@ independent raw-HTTP SMILES check, and recomputes several artifacts, failing CI 
 claims — "every figure re-pulled," "fabrication impossible to hide," "no value originates from a model" —
 are stronger than the code delivers.
 
-> ◐ **Partly fixed — and the coverage itself widened.** The overclaiming WORDING is corrected (`verify.py`'s
-> headline/banner and the README state exactly what is and isn't re-checked), AND two real gaps have since
-> closed: each top hit's **QED is now independently re-fetched** from ChEMBL (commit `ae5d774`) and
-> **`provenance.json` is now cross-checked** against the artifacts (commit `e3fbeb5`; §3 last item). So the
-> independently re-verified set is now **SMILES + QED + the manifest** — but each hit's **potency
-> (`best_pchembl`) and descriptor columns (mw/alogp/TPSA/ro5/similarity) are still read from the file, not
-> re-fetched**, the **top-5 hits / first-25 liabilities caps remain**, and **DRIFT still exits 0**. A
-> self-consistent fabrication of potency + its matching score still passes. The remaining gaps below are now
-> disclosed, not overstated.
+> ◐ **Largely fixed — coverage widened substantially.** The overclaiming WORDING is corrected, AND the real
+> gaps have since closed: each top hit's **SMILES, QED, AND potency (`best_pchembl`) are now all independently
+> re-fetched** from ChEMBL (commits `ae5d774`, `ae21871`), **`provenance.json` is cross-checked** against the
+> artifacts (`e3fbeb5`), and the hits check now covers **all 25 shortlist rows** (the top-5 cap was raised). So
+> a self-consistent potency+score fabrication no longer passes. **Inherent residues (by design):** the
+> display-only descriptor columns (mw/alogp/TPSA/similarity, which do NOT feed the ranking score) are still read
+> from the file, and **DRIFT still exits 0** — because a within-tolerance change in a living database is
+> legitimate growth, not fabrication; it is now made visible, not silent.
 
-- ◐ 🔴 **Most ligand-shortlist numbers are still not re-pulled (SMILES + QED now are).** For each top hit the
-  canonical **SMILES** and the **`qed`** are now independently re-fetched from ChEMBL and compared; but potency
-  (`best_pchembl`), `ro5_violations`, similarity, and MW/alogp/TPSA are still read from the file and fed
-  unchanged into the score recompute — so for those columns the score proves only that the column is *internally
-  consistent with its own row*, not that the inputs are real. *(QED re-fetch `cad/verify.py:199-219`; SMILES
-  re-fetch `:172-197`; score recompute `:221-247`.)*
-- ⏳ 🟠 **A self-consistent potency fabrication still passes.** Edit `best_pchembl` *and* its matching score
-  together and the row reproduces and passes; only an isolated score-column edit is caught. (QED can no longer be
-  silently fabricated this way — it is re-fetched and compared — but potency and the other descriptor inputs
-  can.) *(`cad/verify.py:221-247`.)*
-- ⏳ 🟠 **DRIFT silently blesses changed numbers and still prints "No fabrications."** Any saved-vs-live
-  difference within `max(2, 10%)` (symmetric — a count going *down* counts too) is a non-failing DRIFT that
-  exits 0. *(`cad/verify.py:83-85,413,418`.)*
+- ✅ 🔴 **The score-driving ligand numbers are now re-pulled.** Each top hit's **SMILES, QED, and potency
+  (`best_pchembl`) are independently re-fetched from ChEMBL** and compared (commits `ae5d774`, `ae21871`), for
+  all 25 shortlist rows. **Residue:** the display-only descriptor columns (mw/alogp/TPSA/similarity) — which do
+  NOT feed the ranking score — are still read from the file. *(`cad/verify.py`.)*
+- ✅ 🟠 **A self-consistent potency fabrication is now caught.** Editing `best_pchembl` + its matching score no
+  longer slips through: potency is independently re-fetched from ChEMBL and compared (live < saved FAILs), as
+  are SMILES and QED. *(`cad/verify.py`.)*
+- ◐ 🟠 **DRIFT exits 0 (by design) — now disclosed, not silent.** A saved-vs-live difference within
+  `max(2, 10%)` is a non-failing DRIFT, because a living database legitimately gains/loses records; failing CI
+  on that would break on every real DB update. The banner/docstring now state DRIFT is symmetric and exits 0,
+  so it is visible rather than blessed silently. *(`cad/verify.py`.)*
 - ⏳ 🟠 **A wrong-but-stable query passes by design.** Count checks re-run the *same* query logic, proving
   reproducibility, not query-design correctness — and `potent_activity_records` is itself the mislabeled,
   unfiltered query from §1. *(`cad/verify.py:16-19`; self-disclosed in the docstring.)*

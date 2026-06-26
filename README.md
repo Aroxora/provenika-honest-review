@@ -44,10 +44,11 @@ where it is due:
 - **Structure + docking-box bootstrap.** Fetches a real experimental PDB (or AlphaFold model) and computes
   a Vina-ready box, so a real docking run can begin. (The box selection was recently hardened — see below.)
 - **A real provenance/verify discipline.** `verify.py` re-fetches ChEMBL/UniProt counts, independently
-  re-pulls each top hit's SMILES (byte-equality) **and QED** from ChEMBL over a raw-HTTP path, cross-checks
-  the `provenance.json` manifest against the artifacts, and deterministically recomputes several artifacts,
-  failing CI on mismatch. As a *tamper-detector and reproducibility gate* this is more than most pipelines
-  offer — though potency/descriptor columns are still trusted from the file (see "Status").
+  re-pulls each top hit's **SMILES (byte-equality), QED, and potency (`best_pchembl`)** from ChEMBL over a
+  raw-HTTP path (all 25 shortlist rows), cross-checks the `provenance.json` manifest against the artifacts, and
+  deterministically recomputes several artifacts, failing CI on mismatch. As a *tamper-detector and
+  reproducibility gate* this is more than most pipelines offer — the only residue is the display-only
+  descriptor columns (mw/alogp/TPSA), which don't feed the ranking and are still read from the file.
 - **Honest by construction, mostly.** The in-code disclaimers are candid, a CI "medical-safety" audit
   fails the build on any dosing/treatment/prognosis output, and the pitch docs leave traction as explicit
   `[fill in]` placeholders rather than inventing it. The project does **not** fabricate adoption.
